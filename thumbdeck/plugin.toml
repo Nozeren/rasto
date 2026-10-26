@@ -1,0 +1,20 @@
+# Rasto in thumbdeck: an entry in the Plugins pane. Selecting it opens Rasto, or brings it to the front when it is
+# already running; the pane shows whether it's running.
+id = "rasto"
+name = "Rasto"
+version = "0.1.0"
+api = 1
+description = "Open Rasto, the manual test recorder (or bring it to the front)"
+icon = "icon.svg"
+
+[view]
+name = "Rasto"
+page = "view.html"
+status = true
+
+[keys.view]
+name = "RASTO"
+surface = "view"
+bindings = [
+  { keys = ["l"], action = "open", does = "open Rasto, or bring it to the front" },
+]

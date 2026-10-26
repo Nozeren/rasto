@@ -1,0 +1,73 @@
+/* Recording HUD: compact, dark, draggable by its background. */
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #1c1c1e;
+  color: #f5f5f7;
+  font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  /* The whole bar drags the window; buttons opt out below. */
+  -webkit-app-region: drag;
+}
+
+button { -webkit-app-region: no-drag; }
+
+.row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.grow { flex: 1; }
+.muted { color: #a1a1a6; white-space: nowrap; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: pulse 1.2s ease-in-out infinite; flex: none; }
+.dot.paused { animation: none; background: #8e8e93; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+.timer { font-weight: 700; font-variant-numeric: tabular-nums; }
+.label { font: 600 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: #64a8ff; white-space: nowrap; }
+
+.step {
+  font-size: 14.5px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #2c2c2e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.step.flash { color: #fff; font-weight: 700; }
+.kw { font-weight: 700; }
+.kw-Given { color: #60a5fa; } .kw-When { color: #fbbf24; } .kw-Then { color: #34d399; } .kw-And, .kw-But { color: #a1a1a6; }
+/* A guide's step number, in the same blue badge as the video banner. */
+.guide-number {
+  display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; padding: 0 0.3em;
+  border-radius: 999px; background: #3b82f6; color: #fff; font-size: 0.85em;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 7px;
+  border: 1px solid #3a3a3c;
+  background: #2c2c2e;
+  color: #f5f5f7;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { filter: brightness(1.2); }
+button:disabled { opacity: 0.35; cursor: default; }
+button.ghost { border: none; background: none; color: #a1a1a6; font-size: 15px; padding: 2px 6px; }
+button.result { border: none; color: #fff; }
+button.pass { background: #1f9d55; }
+button.fail { background: #e5484d; }
+button.blocked { background: #d97706; }
+button.stop { background: #ff3b30; border-color: #ff3b30; color: #fff; }
+
+/* Countdown before recording starts */
+body.counting .dot { animation: none; background: #8e8e93; }
+.count { display: inline-block; min-width: 22px; font-size: 16px; line-height: 1; font-weight: 800; color: #ff3b30; font-variant-numeric: tabular-nums; }

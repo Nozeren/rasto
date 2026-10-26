@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream: file:; style-src 'self'">
+  <title>Rasto</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">●</span> Rasto</div>
+    <nav class="stepper" aria-label="Steps">
+      <button type="button" class="stepper-item" data-goto="cases"><span class="num">1</span> Cases</button>
+      <span class="stepper-line"></span>
+      <button type="button" class="stepper-item" data-goto="source"><span class="num">2</span> What to record</button>
+      <span class="stepper-line"></span>
+      <button type="button" class="stepper-item" data-goto="save"><span class="num">3</span> Save to</button>
+    </nav>
+    <div class="top-actions">
+      <button id="open-history" type="button" class="top-btn" title="Past recordings">🕘 History</button>
+      <button id="open-settings" type="button" class="icon-btn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ① Cases -->
+    <section class="view" data-view="cases">
+      <div class="split">
+        <div class="pane">
+          <div class="search">
+            <input id="case-input" type="text" placeholder="TestRail case C1234  ·  run R100" autocomplete="off" spellcheck="false">
+            <button id="case-load" type="button" class="primary">Load</button>
+          </div>
+          <div class="search-alt">
+            or <button id="open-feature" type="button" class="link">open a .feature file or a guide (.md)</button>
+            · <button id="toggle-paste" type="button" class="link">paste steps</button>
+          </div>
+
+          <div id="paste-box" class="card" hidden>
+            <textarea id="paste-text" rows="7" placeholder="Paste a Scenario, just Given / When / Then lines, or a guide (# title and numbered steps)"></textarea>
+            <div class="card-actions"><button id="paste-use" type="button" class="primary">Use these steps</button></div>
+          </div>
+
+          <div id="run-box" class="card" hidden>
+            <div class="card-head">
+              <div id="run-title" class="card-title"></div>
+              <input id="run-filter" type="search" placeholder="Filter">
+            </div>
+            <ul id="run-tests" class="list"></ul>
+          </div>
+
+          <div id="case-card" class="card" hidden>
+            <div class="card-head">
+              <div>
+                <div id="case-id" class="case-id"></div>
+                <div id="case-name" class="card-title"></div>
+              </div>
+            </div>
+            <select id="scenario-select" hidden></select>
+            <div id="rows" class="rows" hidden>
+              <div class="label">Examples row to record</div>
+              <div id="row-chips" class="chips"></div>
+            </div>
+            <label id="include-bg-label" class="check"><input id="include-bg" type="checkbox"> Include Background steps</label>
+            <details class="steps-preview">
+              <summary id="steps-summary">Steps</summary>
+              <div id="case-steps"></div>
+            </details>
+            <div class="card-actions">
+              <button id="add-all-rows" type="button" hidden>+ Add all rows</button>
+              <button id="add-queue" type="button" class="primary">+ Add to queue</button>
+            </div>
+          </div>
+
+          <div id="cases-empty" class="empty">
+            <div class="empty-title">Load a case to start</div>
+            <div>Type a TestRail case (<code>C1234</code>) or a run (<code>R100</code>) and press Enter.</div>
+          </div>
+        </div>
+
+        <aside class="pane side">
+          <div class="side-head">
+            <h2>Queue <span id="queue-count" class="count">0</span></h2>
+            <button id="clear-queue" type="button" class="link">Clear</button>
+          </div>
+          <ol id="queue" class="queue"></ol>
+          <p class="hint">Cases are recorded one after another in the same video, in this order.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ② What to record -->
+    <section class="view" data-view="source" hidden>
+      <div class="split wide-side">
+        <div class="pane">
+          <div class="search">
+            <input id="source-filter" type="search" placeholder="Filter windows (e.g. Chrome)">
+            <button id="refresh-sources" type="button">Refresh</button>
+          </div>
+          <div id="access-warning" class="notice" hidden></div>
+          <div id="sources" class="sources"></div>
+        </div>
+        <aside class="pane side">
+          <h2>Preview</h2>
+          <div class="preview-frame"><canvas id="canvas" width="1600" height="900"></canvas></div>
+          <p id="preview-caption" class="hint">Pick a window to see what the video will look like, banner included.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ③ Save to -->
+    <section class="view" data-view="save" hidden>
+      <div class="split">
+        <div class="pane">
+          <div class="form">
+            <label for="out-subject">Subject</label>
+            <input id="out-subject" type="text" list="recent-subjects" placeholder="checkout">
+            <label for="out-config">Config</label>
+            <input id="out-config" type="text" list="recent-configs" placeholder="staging_chrome">
+            <label>Folder</label>
+            <div class="folder-line"><code id="out-root"></code> <button id="change-root" type="button" class="link">change</button></div>
+          </div>
+          <div class="file-preview">
+            <div class="label">The recording will be saved as</div>
+            <code id="file-preview"></code>
+          </div>
+        </div>
+        <aside class="pane side">
+          <h2>Ready to record</h2>
+          <div class="summary">
+            <div class="label">Cases</div>
+            <ol id="summary-cases" class="summary-list"></ol>
+            <div class="label">Recording</div>
+            <div id="summary-source"></div>
+            <div class="label">While recording</div>
+            <table id="summary-keys" class="keys"></table>
+          </div>
+        </aside>
+      </div>
+      <datalist id="recent-subjects"></datalist>
+      <datalist id="recent-configs"></datalist>
+    </section>
+
+    <!-- Recording (moves to a floating HUD in R2) -->
+    <section class="view" data-view="recording" hidden>
+      <div class="recording">
+        <div class="rec-top">
+          <span class="rec-dot"></span><span id="rec-timer" class="rec-timer">00:00</span>
+          <span id="rec-case" class="rec-case"></span>
+          <span id="rec-progress" class="rec-progress"></span>
+        </div>
+        <div class="rec-step">
+          <div id="rec-position" class="label"></div>
+          <div><span id="rec-keyword" class="kw"></span> <span id="rec-text"></span></div>
+        </div>
+        <div id="rec-steps" class="rec-steps"></div>
+        <div class="rec-controls">
+          <button id="step-prev" type="button">◀</button>
+          <button id="step-next" type="button">▶</button>
+          <span class="spacer"></span>
+          <button id="res-pass" type="button" class="result pass">✓ Pass</button>
+          <button id="res-fail" type="button" class="result fail">✗ Fail</button>
+          <button id="res-blocked" type="button" class="result blocked">⊘ Blocked</button>
+          <span class="spacer"></span>
+          <button id="pause" type="button">Ⅱ Pause</button>
+          <button id="stop" type="button" class="danger">■ Stop</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section class="view" data-view="history" hidden>
+      <div class="split history">
+        <div class="pane">
+          <div class="search">
+            <input id="history-filter" type="search" placeholder="Filter by case, subject, config or file">
+            <select id="history-kind">
+              <option value="">Runs and guides</option>
+              <option value="run">Test runs</option>
+              <option value="guide">Guides</option>
+            </select>
+            <select id="history-result">
+              <option value="">All results</option>
+              <option value="pass">Passed</option>
+              <option value="fail">Failed</option>
+              <option value="blocked">Blocked</option>
+              <option value="incomplete">Incomplete</option>
+              <option value="done">Done (guides)</option>
+            </select>
+            <button id="history-refresh" type="button">Refresh</button>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </div>
+        <aside class="pane side" id="history-detail">
+          <div id="history-empty" class="empty">
+            <div class="empty-title">Pick a recording</div>
+            <div>Click a run on the left to play it and see its steps.</div>
+          </div>
+          <div id="history-run" hidden>
+            <div class="card-head">
+              <div>
+                <div id="hr-where" class="case-id"></div>
+                <div id="hr-file" class="card-title"></div>
+                <div id="hr-meta" class="hint"></div>
+              </div>
+            </div>
+            <video id="hr-video" controls preload="metadata"></video>
+            <div id="hr-missing" class="notice" hidden>The video file is no longer there.</div>
+            <div class="hr-actions">
+              <button id="hr-show" type="button">Show in folder</button>
+              <button id="hr-copy" type="button">Copy path</button>
+              <span class="spacer"></span>
+              <button id="hr-load" type="button" class="primary">Load these cases</button>
+            </div>
+            <div class="label">Steps (click to jump)</div>
+            <div id="hr-steps" class="hr-steps"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Done -->
+    <section class="view" data-view="done" hidden>
+      <div class="done-view">
+        <div id="done-icon" class="done-icon">…</div>
+        <div id="done-title" class="done-title">Saving…</div>
+        <progress id="progress" max="1" value="0"></progress>
+        <code id="done-file" class="done-file"></code>
+        <div id="done-meta" class="hint"></div>
+        <ol id="done-cases" class="queue"></ol>
+        <div class="done-actions">
+          <button id="show-folder" type="button">Show in folder</button>
+          <button id="record-again" type="button">Record the same cases again</button>
+          <button id="new-run" type="button" class="primary">New run</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="actionbar">
+    <div id="status" class="status" data-kind="info"></div>
+    <div class="nav">
+      <button id="back" type="button">← Back</button>
+      <button id="next" type="button" class="primary">Next →</button>
+    </div>
+  </footer>
+
+  <dialog id="settings">
+    <form method="dialog" class="settings">
+      <div class="settings-head"><h2>Settings</h2><button type="submit" class="icon-btn" title="Close">✕</button></div>
+
+      <h3>Hotkeys</h3>
+      <p class="hint">Work while another app has focus. Click <b>Change</b> and press the new combination (needs Ctrl, Alt or Cmd; Esc cancels).</p>
+      <div id="hotkeys" class="hotkeys"></div>
+
+      <h3>TestRail</h3>
+      <div class="form">
+        <label for="tr-url">URL</label>
+        <input id="tr-url" type="text" placeholder="https://yourcompany.testrail.io" spellcheck="false">
+        <label for="tr-user">User</label>
+        <input id="tr-user" type="text" placeholder="you@company.com" spellcheck="false">
+        <label for="tr-key">API key</label>
+        <input id="tr-key" type="password" placeholder="Paste your TestRail API key" autocomplete="off">
+      </div>
+      <div class="tr-actions">
+        <span id="tr-state" class="hint"></span>
+        <button id="tr-test" type="button">Test connection</button>
+        <button id="tr-save" type="button" class="primary">Save</button>
+      </div>
+
+      <h3>Recording</h3>
+      <div class="form">
+        <label>Parent folder</label>
+        <div class="folder-line"><code id="settings-root"></code> <button id="settings-change-root" type="button" class="link">change</button></div>
+        <label for="max-mb">Size limit</label>
+        <div><input id="max-mb" type="number" min="5" max="500" step="5"> MB <span class="hint">above it, a smaller preset is used</span></div>
+        <label for="countdown">Countdown</label>
+        <div><input id="countdown" type="number" min="0" max="10" step="1"> s <span class="hint">before recording starts (0 = start at once)</span></div>
+        <label for="pref-bg">Background</label>
+        <label class="check"><input id="pref-bg" type="checkbox"> Include Background steps by default</label>
+        <label for="pref-remote">Remote control</label>
+        <label class="check"><input id="pref-remote" type="checkbox"> Allow scripts and agents on this computer to start and drive recordings <span class="hint">(bin/rasto-remote.js, bin/rasto-mcp.js)</span></label>
+      </div>
+
+      <h3>Browser</h3>
+      <p class="hint">A Chrome / Edge started with <code>--remote-debugging-port</code> (see the README). Its tabs can also be recorded in step ②, even headless.</p>
+      <div class="form">
+        <label for="browser-port">Debugging port</label>
+        <div><input id="browser-port" type="number" min="1024" max="65535" step="1"> <span class="hint">the browser's --remote-debugging-port</span></div>
+        <label for="pref-console">Console</label>
+        <label class="check"><input id="pref-console" type="checkbox"> Save the browser's console with each step in the step log</label>
+        <label for="pref-network">Network</label>
+        <label class="check"><input id="pref-network" type="checkbox"> Save the browser's requests as a .har next to the video</label>
+        <label for="pref-secrets">Secrets</label>
+        <label class="check"><input id="pref-secrets" type="checkbox"> Keep cookies, tokens and passwords in the .har <span class="hint">(off: they are replaced with REDACTED)</span></label>
+      </div>
+      <div class="card-actions"><button type="submit" class="primary">Done</button></div>
+    </form>
+  </dialog>
+
+  <script src="../dist/renderer.js"></script>
+</body>
+</html>

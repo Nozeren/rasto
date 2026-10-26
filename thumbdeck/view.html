@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <style>
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+    img { width: 96px; height: 96px; }
+    h1 { margin: 0; font: 700 22px var(--sans); }
+    #state { font: 600 13px var(--mono); }
+    #state.running { color: var(--green); }
+    #state.closed { color: var(--fg-dim, inherit); opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <img src="icon.svg" alt="">
+  <h1>Rasto</h1>
+  <div id="state">…</div>
+  <div class="td-toolbar" style="border: 0">
+    <button id="open" class="primary">Open Rasto (l)</button>
+  </div>
+  <p class="td-muted">Selecting Rasto here opens it, or brings it to the front if it's already open.</p>
+  <script type="module">
+    const td = window.thumbdeck;
+    const $ = (id) => document.getElementById(id);
+    const mac = navigator.platform.toUpperCase().includes("MAC");
+    let poll = null;
+
+    // macOS: `open -a` launches the app or activates the running one. Elsewhere Rasto itself focuses its running
+    // copy when launched again (single instance).
+    const openCommand = mac ? ["open", "-a", "Rasto"] : ["rasto"];
+    const runningCommand = mac ? ["pgrep", "-x", "Rasto"] : ["pgrep", "-x", "rasto"];
+
+    async function isRunning() {
+      try {
+        return (await td.exec(runningCommand, { timeout: 5000 })).code === 0;
+      } catch {
+        return false;
+      }
+    }
+
+    async function refresh() {
+      const running = await isRunning();
+      $("state").textContent = running ? "running" : "closed";
+      $("state").className = running ? "running" : "closed";
+      td.ui.status(running ? "running" : null);
+    }
+
+    async function open() {
+      const result = await td.exec(openCommand, { timeout: 15000 });
+      if (result.code !== 0) {
+        td.ui.say(`Couldn't open Rasto: ${(result.stderr || result.stdout).trim() || "is it installed in Applications?"}`, { error: true });
+        return;
+      }
+      td.ui.say("Rasto is in front.");
+      setTimeout(refresh, 1500);
+    }
+
+    function startPolling() {
+      stopPolling();
+      poll = setInterval(refresh, 5000);
+    }
+    function stopPolling() {
+      if (poll) clearInterval(poll);
+      poll = null;
+    }
+
+    // Selecting the entry in the Plugins pane shows this view: that is the "click" that opens Rasto.
+    td.on("shown", () => {
+      open();
+      startPolling();
+    });
+    td.on("hidden", stopPolling);
+    td.on("key", ({ action }) => {
+      if (action === "open") open();
+    });
+    $("open").onclick = open;
+
+    // First load is also the first time it's shown.
+    open();
+    refresh();
+    startPolling();
+  </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+{
+  "name": "rasto",
+  "productName": "Rasto",
+  "version": "0.1.0",
+  "description": "Rasto: record manual test runs with the current Gherkin step burned into the video.",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "fix-electron": "node scripts/fix-electron.js",
+    "icon": "electron scripts/render-icon.js",
+    "dist": "npm run build && electron-builder --mac --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.2",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.6.0"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "ffmpeg-static@5.3.0": true
+  },
+  "build": {
+    "appId": "app.rasto",
+    "productName": "Rasto",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "static/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png",
+      "identity": null,
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Rasto records the window or screen you pick, with the current test step burned into the video."
+      }
+    },
+    "dmg": {
+      "title": "Rasto"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "publish": null
+  }
+}

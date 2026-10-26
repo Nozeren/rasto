@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+  <title>Rasto HUD</title>
+  <link rel="stylesheet" href="hud.css">
+</head>
+<body>
+  <div class="row top">
+    <span id="dot" class="dot"></span>
+    <span id="timer" class="timer">00:00</span>
+    <span id="label" class="label"></span>
+    <span id="position" class="muted"></span>
+    <span id="cases" class="muted"></span>
+    <span class="grow"></span>
+    <button id="show-main" type="button" class="ghost" title="Show the main window">⤢</button>
+  </div>
+  <div id="step" class="step"></div>
+  <div class="row controls">
+    <button id="prev" type="button" title="Previous step">◀</button>
+    <button id="next" type="button" title="Next step">▶</button>
+    <span class="grow"></span>
+    <button id="pass" type="button" class="result pass">✓ Pass</button>
+    <button id="fail" type="button" class="result fail">✗ Fail</button>
+    <button id="blocked" type="button" class="result blocked">⊘ Blocked</button>
+    <span class="grow"></span>
+    <button id="pause" type="button" title="Pause">Ⅱ</button>
+    <button id="stop" type="button" class="stop" title="Stop recording">■</button>
+  </div>
+  <script src="../dist/hud.js"></script>
+</body>
+</html>
