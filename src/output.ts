@@ -8,6 +8,7 @@
  */
 import { promises as fs } from 'fs';
 import path from 'path';
+import type { SavedClip } from './clips';
 import type { TimelineMark } from './har';
 import { OutputSettings } from './settings';
 
@@ -25,6 +26,15 @@ export interface LoggedStep {
   atMs: number;
   /** What the browser logged while this step was on screen (⚙ Settings → Browser console). */
   console?: LoggedConsoleEntry[];
+  /** What was clicked and typed while this step was on screen (a recorded browser tab, screencast.ts). */
+  actions?: LoggedAction[];
+}
+
+export interface LoggedAction {
+  kind: 'click' | 'type' | 'select' | 'key';
+  text: string;
+  value?: string;
+  atMs: number;
 }
 
 export interface LoggedConsoleEntry {
@@ -42,6 +52,8 @@ export interface LoggedCase {
   row: string | null;
   title: string;
   result: CaseResult | null;
+  /** When Pass / Fail / Blocked was given, in video time: where the case's clip ends (clips.ts). */
+  resultAtMs?: number;
   /** A Markdown guide (guide.ts): it ends with Done, recorded as 'pass'. */
   guide?: boolean;
   steps: LoggedStep[];
@@ -141,7 +153,14 @@ export interface NetworkSummary {
   failed: number;
 }
 
-export async function writeStepLog(file: string, video: string, output: OutputSettings, meta: RecordingMeta, network?: NetworkSummary): Promise<void> {
+export async function writeStepLog(
+  file: string,
+  video: string,
+  output: OutputSettings,
+  meta: RecordingMeta,
+  extras: { network?: NetworkSummary; clips?: SavedClip[] } = {},
+): Promise<void> {
+  const { network, clips } = extras;
   const guide = isGuideRun(meta.cases);
   const log = {
     ...(guide ? { kind: 'guide' } : {}),
@@ -153,6 +172,7 @@ export async function writeStepLog(file: string, video: string, output: OutputSe
     overall: overallResult(meta.cases),
     ...(meta.browserConsole ? { browserConsole: meta.browserConsole } : {}),
     ...(network ? { network } : meta.network ? { network: meta.network } : {}),
+    ...(clips?.length ? { clips } : {}),
     cases: meta.cases.map((c) => ({
       id: c.id,
       row: c.row,
@@ -164,6 +184,9 @@ export async function writeStepLog(file: string, video: string, output: OutputSe
         text: `${s.keyword} ${s.text}`.trim(),
         ...(s.console?.length
           ? { console: s.console.map((e) => ({ at: formatTime(e.atMs), level: e.level, text: e.text, ...(e.source ? { source: e.source } : {}), ...(e.paused ? { paused: true } : {}) })) }
+          : {}),
+        ...(s.actions?.length
+          ? { actions: s.actions.map((a) => ({ at: formatTime(a.atMs), kind: a.kind, text: a.text, ...(a.value !== undefined ? { value: a.value } : {}) })) }
           : {}),
       })),
     })),
@@ -211,7 +234,56 @@ export interface HistoryEntry {
   startedAt: string;
   duration: string;
   overall: string;
-  cases: { id: string; row: string | null; title: string; result: string; steps: { at: string; step: string; text: string }[] }[];
+  cases: { id: string; row: string | null; title: string; result: string; steps: HistoryStep[] }[];
+  /** 'captured', or why not; absent when the console was off. */
+  browserConsole?: string;
+  /** The .har next to the video (absolute), when there is one. */
+  har?: string;
+  network?: NetworkSummary;
+  /** Paths absolute. */
+  clips: SavedClip[];
+}
+
+/** A step as the step log has it, with what happened during it. */
+export interface HistoryStep {
+  at: string;
+  step: string;
+  text: string;
+  console?: { at: string; level: string; text: string; source?: string; paused?: boolean }[];
+  actions?: { at: string; kind: string; text: string; value?: string }[];
+}
+
+export interface HistoryRequest {
+  /** Seconds into the video. */
+  at: number;
+  method: string;
+  url: string;
+  status: number;
+  error?: string;
+  failed: boolean;
+}
+
+const MAX_HISTORY_REQUESTS = 5000;
+
+/** The requests of a .har, for the History screen: when, what, and whether it failed. */
+export async function readHarRequests(har: string): Promise<HistoryRequest[]> {
+  const entries = JSON.parse(await fs.readFile(har, 'utf-8')).log.entries as {
+    _videoTime?: string;
+    request: { method: string; url: string };
+    response: { status: number; _error?: string };
+  }[];
+  return entries.slice(0, MAX_HISTORY_REQUESTS).map((e) => {
+    const [m, s] = (e._videoTime ?? '00:00').split(':');
+    const error = e.response._error;
+    return {
+      at: Number(m) * 60 + Number(s),
+      method: e.request.method,
+      url: e.request.url.length > 300 ? `${e.request.url.slice(0, 299)}…` : e.request.url,
+      status: e.response.status,
+      ...(error ? { error } : {}),
+      failed: e.response.status >= 400 || (e.response.status === 0 && error !== 'canceled'),
+    };
+  });
 }
 
 /**
@@ -233,6 +305,8 @@ export async function listHistory(root: string): Promise<HistoryEntry[]> {
           if (typeof data.video !== 'string' || !Array.isArray(data.cases)) continue;
           const video = path.join(configDir, data.video);
           const stat = await fs.stat(video).catch(() => null);
+          const har = typeof data.network === 'object' && data.network?.har ? path.join(configDir, data.network.har) : undefined;
+          const harExists = har ? !!(await fs.stat(har).catch(() => null)) : false;
           entries.push({
             kind: data.kind === 'guide' ? 'guide' : undefined,
             log,
@@ -245,6 +319,9 @@ export async function listHistory(root: string): Promise<HistoryEntry[]> {
             duration: data.duration ?? '',
             overall: data.overall ?? '',
             cases: data.cases,
+            ...(data.browserConsole ? { browserConsole: data.browserConsole } : {}),
+            ...(harExists ? { har, network: data.network } : {}),
+            clips: (Array.isArray(data.clips) ? (data.clips as SavedClip[]) : []).map((c) => ({ ...c, file: path.join(configDir, c.file) })),
           });
         } catch {
           // Not JSON, or not ours.

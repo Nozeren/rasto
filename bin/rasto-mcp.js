@@ -36,6 +36,7 @@ const TOOLS = [
         tab: { type: 'string', description: 'Instead of window: part of a browser tab title or URL (see rasto_tabs), e.g. "localhost:3000"' },
         subject: { type: 'string', description: 'Output subject folder (optional, defaults to the last one used)' },
         config: { type: 'string', description: 'Output config folder (optional, defaults to the last one used)' },
+        run: { type: 'string', description: 'TestRail run (e.g. "R100") to post each case\'s result to once saved, with its clip, step log and .har attached (optional)' },
       },
       required: ['feature'],
     },
@@ -57,7 +58,8 @@ const TOOLS = [
     name: 'rasto_status',
     description:
       'Rasto state: view, kind (guide or cases), recording / paused / compressing, card (the guide card on screen, ' +
-      'or null), current case and step, results, and the saved file (plus its chapters .md for a guide).',
+      'or null), current case and step, results, the saved file (plus its chapters .md for a guide), and testrail: how ' +
+      'posting to the run went (state posting / done / error, per case). Wait for testrail.state to leave "posting".',
     inputSchema: { type: 'object', properties: {} },
   },
 ];

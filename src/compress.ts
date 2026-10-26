@@ -10,7 +10,7 @@ import ffmpegStatic from 'ffmpeg-static';
 
 // In the packaged app the binary is unpacked next to app.asar (see "asarUnpack" in package.json); executables can't run
 // from inside the archive.
-const ffmpegPath = ffmpegStatic ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : null;
+export const ffmpegPath = ffmpegStatic ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : null;
 
 export interface Preset {
   name: string;
@@ -31,34 +31,23 @@ export interface CompressResult {
 /** Progress callback: fraction 0..1 (best effort) and the preset being applied. */
 export type ProgressFn = (fraction: number, preset: string) => void;
 
-function encode(input: string, output: string, preset: Preset, durationSec: number, onProgress: ProgressFn): Promise<void> {
+/** Runs ffmpeg with `args`, reporting progress against `durationSec` (best effort) under `label`. */
+export function runFfmpeg(args: string[], durationSec = 0, onProgress?: ProgressFn, label = ''): Promise<void> {
   if (!ffmpegPath) {
     return Promise.reject(new Error('ffmpeg binary not found (ffmpeg-static)'));
   }
 
-  // Width capped at maxWidth and kept even (required by yuv420p), height follows the aspect ratio.
-  const filter = `fps=${preset.fps},scale='trunc(min(${preset.maxWidth},iw)/2)*2':-2`;
-  const args = [
-    '-nostdin', '-y', '-i', input,
-    '-an',
-    '-vf', filter,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', String(preset.crf),
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart',
-    output,
-  ];
-
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath as string, args);
+    const proc = spawn(ffmpegPath as string, ['-nostdin', '-y', ...args]);
     let stderr = '';
 
     proc.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString();
       stderr = (stderr + text).slice(-4000);
       const match = /time=(\d+):(\d+):(\d+\.\d+)/.exec(text);
-      if (match && durationSec > 0) {
+      if (match && durationSec > 0 && onProgress) {
         const seconds = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
-        onProgress(Math.min(seconds / durationSec, 1), preset.name);
+        onProgress(Math.min(seconds / durationSec, 1), label);
       }
     });
     proc.on('error', reject);
@@ -70,6 +59,20 @@ function encode(input: string, output: string, preset: Preset, durationSec: numb
       }
     });
   });
+}
+
+function encode(input: string, output: string, preset: Preset, durationSec: number, onProgress: ProgressFn): Promise<void> {
+  // Width capped at maxWidth and kept even (required by yuv420p), height follows the aspect ratio.
+  const filter = `fps=${preset.fps},scale='trunc(min(${preset.maxWidth},iw)/2)*2':-2`;
+  return runFfmpeg([
+    '-i', input,
+    '-an',
+    '-vf', filter,
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', String(preset.crf),
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    output,
+  ], durationSec, onProgress, preset.name);
 }
 
 /**

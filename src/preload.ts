@@ -5,7 +5,14 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('recorder', {
   listSources: () => ipcRenderer.invoke('list-sources'),
-  saveRecording: (data: ArrayBuffer, meta: unknown) => ipcRenderer.invoke('save-recording', data, meta),
+  captureBegin: () => ipcRenderer.invoke('capture-begin'),
+  captureChunk: (data: ArrayBuffer) => ipcRenderer.send('capture-chunk', data),
+  captureSnapshot: (meta: unknown) => ipcRenderer.send('capture-snapshot', meta),
+  saveRecording: (meta: unknown) => ipcRenderer.invoke('save-recording', meta),
+  unsavedList: () => ipcRenderer.invoke('unsaved-list'),
+  unsavedSave: (id: string) => ipcRenderer.invoke('unsaved-save', id),
+  unsavedDiscard: (id: string) => ipcRenderer.invoke('unsaved-discard', id),
+  testrailPost: (run: string) => ipcRenderer.invoke('testrail-post', run),
   previewOutput: () => ipcRenderer.invoke('preview-output'),
   guideFileToken: (title: string) => ipcRenderer.invoke('guide-file-token', title),
   browserStart: (options: unknown) => ipcRenderer.invoke('browser-start', options),
@@ -16,14 +23,18 @@ contextBridge.exposeInMainWorld('recorder', {
   listTabs: () => ipcRenderer.invoke('list-tabs'),
   screencastStart: (tabId: string) => ipcRenderer.invoke('screencast-start', tabId),
   screencastStop: () => ipcRenderer.invoke('screencast-stop'),
-  onFrame: (callback: (data: string) => void) => {
-    ipcRenderer.on('browser-frame', (_event, data) => callback(data));
+  onFrame: (callback: (frame: unknown) => void) => {
+    ipcRenderer.on('browser-frame', (_event, frame) => callback(frame));
+  },
+  onInput: (callback: (event: unknown) => void) => {
+    ipcRenderer.on('browser-input', (_event, input) => callback(input));
   },
   setOutput: (output: unknown) => ipcRenderer.invoke('set-output', output),
   chooseOutputRoot: () => ipcRenderer.invoke('choose-output-root'),
   setPreferences: (preferences: unknown) => ipcRenderer.invoke('set-preferences', preferences),
   reveal: (filePath: string) => ipcRenderer.invoke('reveal', filePath),
   historyList: () => ipcRenderer.invoke('history-list'),
+  historyNetwork: (har: string) => ipcRenderer.invoke('history-network', har),
   copyText: (text: string) => ipcRenderer.invoke('copy-text', text),
   screenAccess: () => ipcRenderer.invoke('screen-access'),
   parseSteps: (text: string) => ipcRenderer.invoke('parse-steps', text),

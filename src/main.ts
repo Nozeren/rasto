@@ -5,19 +5,21 @@
  */
 import { app, BrowserWindow, clipboard, desktopCapturer, dialog, globalShortcut, ipcMain, safeStorage, screen, shell, systemPreferences } from 'electron';
 import { promises as fs, rmSync } from 'fs';
-import os from 'os';
 import path from 'path';
 import { compress } from './compress';
 import { RawRequest, startBrowserCapture, stopBrowserCapture } from './capture';
 import { listTabs } from './devtools';
+import { addStepTracks, planClips, saveClips } from './clips';
 import { buildHar } from './har';
 import { Feature, hasGherkinStructure, parseGherkin } from './gherkin';
 import { parseGuide } from './guide';
-import { baseName, guideToken, isGuideRun, listHistory, NetworkSummary, nextSeq, outputFolder, RecordingMeta, writeChapters, writeStepLog } from './output';
+import { baseName, guideToken, isGuideRun, listHistory, NetworkSummary, nextSeq, outputFolder, readHarRequests, RecordingMeta, writeChapters, writeStepLog } from './output';
 import { remoteInfoPath, startRemote, stopRemote } from './remote';
+import { postRun, SavedRecording } from './report';
 import { startScreencast, stopScreencast, tabThumbnail } from './screencast';
 import { HotkeyAction, loadSettings, OutputSettings, Preferences, remember, saveSettings, Settings } from './settings';
-import { credentialSource, loadCase, loadRun, parseCaseId, setCredentials, testConnection } from './testrail';
+import { credentialSource, loadCase, loadRun, parseCaseId, parseRunId, setCredentials, testConnection } from './testrail';
+import { appendChunk, beginCapture, discardUnsaved, endCapture, listUnsaved, writeSnapshot } from './unsaved';
 
 
 let mainWindow: BrowserWindow | null = null;
@@ -140,12 +142,6 @@ ipcMain.on('hud-action', (_event, action: string) => {
   mainWindow?.webContents.send('hotkey', action);
 });
 
-function timestamp(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-}
-
 ipcMain.handle('list-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
@@ -175,7 +171,12 @@ ipcMain.handle('list-tabs', async () => tabSources());
 
 ipcMain.handle('screencast-start', async (_event, tabId: string) => {
   try {
-    await startScreencast(settings.preferences.browserPort, tabId, (frame) => mainWindow?.webContents.send('browser-frame', frame.data));
+    await startScreencast(
+      settings.preferences.browserPort,
+      tabId,
+      (frame) => mainWindow?.webContents.send('browser-frame', frame),
+      settings.preferences.showInput ? (event) => mainWindow?.webContents.send('browser-input', event) : undefined,
+    );
     return { ok: true };
   } catch (error) {
     stopScreencast();
@@ -184,46 +185,109 @@ ipcMain.handle('screencast-start', async (_event, tabId: string) => {
 });
 ipcMain.handle('screencast-stop', async () => stopScreencast());
 
-ipcMain.handle('save-recording', async (_event, data: ArrayBuffer, meta: RecordingMeta) => {
-  const folder = outputFolder(settings.output);
+/** The last recording saved, for posting it to TestRail from the Done screen. */
+let lastSaved: SavedRecording | null = null;
+
+function progress(fraction: number, stage: string): void {
+  mainWindow?.webContents.send('compress-progress', { fraction, preset: stage });
+}
+
+/**
+ * Turns a finished capture into the saved recording: compressed MP4 with the steps as chapters and subtitles, the
+ * .har, the step log, the clips and (for a guide) the chapters .md. On failure the capture is kept for a later try.
+ */
+async function saveRecording(webm: string, meta: RecordingMeta, output: OutputSettings, requests: RawRequest[] | null): Promise<unknown> {
+  const folder = outputFolder(output);
   await fs.mkdir(folder, { recursive: true });
   const base = baseName(await nextSeq(folder), meta.cases);
-  const raw = path.join(os.tmpdir(), `${base}_${timestamp()}.webm`);
-  const output = path.join(folder, `${base}.mp4`);
+  const video = path.join(folder, `${base}.mp4`);
 
-  await fs.writeFile(raw, Buffer.from(data));
   try {
     const maxBytes = settings.preferences.maxMb * 1024 * 1024;
-    const result = await compress(raw, output, meta.durationMs / 1000, maxBytes, (fraction, preset) => {
-      mainWindow?.webContents.send('compress-progress', { fraction, preset });
-    });
-    await fs.unlink(raw);
+    const result = await compress(webm, video, meta.durationMs / 1000, maxBytes, progress);
+
+    // Everything after the MP4 is extra: a step that fails is logged and skipped, the recording is still saved.
+    progress(1, 'steps');
+    await addStepTracks(video, meta, base).catch((error: Error) => console.error(`[save] chapters / subtitles: ${error.message}`));
+
     let network: NetworkSummary | undefined;
-    if (meta.network === 'captured' && capturedRequests) {
-      // The .har is extra: the video and its step log are saved even if it can't be written.
-      const har = `${base}.har`;
-      const built = buildHar(capturedRequests, meta.timeline, meta, settings.preferences.keepSecrets, app.getVersion());
-      await fs.writeFile(path.join(folder, har), JSON.stringify(built.har, null, 1))
-        .then(() => (network = { har, ...built.summary }))
-        .catch((error: Error) => console.error(`[save] har: ${error.message}`));
+    let har: string | undefined;
+    if (meta.network === 'captured' && requests) {
+      const built = buildHar(requests, meta.timeline, meta, settings.preferences.keepSecrets, app.getVersion());
+      har = path.join(folder, `${base}.har`);
+      await fs.writeFile(har, JSON.stringify(built.har, null, 1))
+        .then(() => (network = { har: path.basename(har as string), ...built.summary }))
+        .catch((error: Error) => {
+          har = undefined;
+          console.error(`[save] har: ${error.message}`);
+        });
     }
-    capturedRequests = null;
+
+    const plans = planClips(meta, settings.preferences.clips, settings.preferences.failureClipSec);
+    if (plans.length) progress(0, 'clips');
+    const clips = await saveClips(video, base, plans, meta);
+
     const log = path.join(folder, `${base}.json`);
-    await writeStepLog(log, output, settings.output, meta, network);
+    await writeStepLog(log, video, output, meta, { network, clips });
     if (isGuideRun(meta.cases)) {
-      // The chapters are extra: the video and its step log are saved even if they can't be written.
       await writeChapters(path.join(folder, `${base}.md`), meta).catch((error: Error) => console.error(`[save] chapters: ${error.message}`));
     }
     settings.recent = {
-      subjects: remember(settings.recent.subjects, settings.output.subject),
-      configs: remember(settings.recent.configs, settings.output.config),
+      subjects: remember(settings.recent.subjects, output.subject),
+      configs: remember(settings.recent.configs, output.config),
     };
     await saveSettings(settings);
-    return { ok: true, ...result, log, network };
+    lastSaved = { video, log, har, clips, meta, subject: output.subject, config: output.config, network };
+    return { ok: true, ...result, log, network, clips };
   } catch (error) {
     // Keep the raw capture so nothing is lost; tell the user where it is.
-    return { ok: false, error: (error as Error).message, raw };
+    return { ok: false, error: (error as Error).message, raw: webm };
   }
+}
+
+// Recording in progress: the capture goes to disk as it comes (unsaved.ts).
+ipcMain.handle('capture-begin', async () => beginCapture(settings.output));
+ipcMain.on('capture-chunk', (_event, data: ArrayBuffer) => appendChunk(data));
+ipcMain.on('capture-snapshot', (_event, meta: RecordingMeta) => {
+  writeSnapshot(meta).catch((error: Error) => console.error(`[unsaved] snapshot: ${error.message}`));
+});
+
+ipcMain.handle('save-recording', async (_event, meta: RecordingMeta) => {
+  const capture = await endCapture();
+  if (!capture) return { ok: false, error: 'Nothing was recorded', raw: '' };
+  const requests = capturedRequests;
+  capturedRequests = null;
+  const result = await saveRecording(capture.webm, meta, settings.output, requests);
+  // Saved: the capture and its crash copy of the step log go. Not saved: both stay, offered again on the next start.
+  if ((result as { ok: boolean }).ok) await discardUnsaved(capture.id);
+  return result;
+});
+
+ipcMain.handle('unsaved-list', async () => (await listUnsaved()).map((u) => ({
+  id: u.id,
+  bytes: u.bytes,
+  startedAt: u.meta.startedAt,
+  durationMs: u.meta.durationMs,
+  cases: u.meta.cases.map((c) => (c.guide ? c.title : c.row ? `${c.id} · ${c.row}` : c.id)),
+  folder: outputFolder(u.output),
+})));
+
+/** Saves a capture left by a crash, where it was going to be saved, with the step log as it was last written. */
+ipcMain.handle('unsaved-save', async (_event, id: string) => {
+  const found = (await listUnsaved()).find((u) => u.id === id);
+  if (!found) return { ok: false, error: 'That recording is gone', raw: '' };
+  const result = await saveRecording(found.webm, found.meta, found.output, null);
+  if ((result as { ok: boolean }).ok) await discardUnsaved(id);
+  return result;
+});
+
+ipcMain.handle('unsaved-discard', async (_event, id: string) => discardUnsaved(id));
+
+ipcMain.handle('testrail-post', async (_event, run: string) => {
+  const runId = parseRunId(run);
+  if (runId === null) return { ok: false, error: `"${run}" is not a TestRail run (R100 or 100)` };
+  if (!lastSaved) return { ok: false, error: 'No recording saved yet' };
+  return { ok: true, run: runId, cases: await postRun(runId, lastSaved) };
 });
 
 // Browser console and network (⚙ Settings → Browser): console entries go to the renderer, which files them under the
@@ -285,6 +349,18 @@ ipcMain.handle('open-screen-settings', async () => {
 });
 
 ipcMain.handle('history-list', async () => listHistory(settings.output.root));
+
+/** A recording's requests, for History. Only a .har inside the recordings folder is read. */
+ipcMain.handle('history-network', async (_event, har: string) => {
+  const root = path.resolve(settings.output.root);
+  const file = path.resolve(har);
+  if (!file.endsWith('.har') || !file.startsWith(root + path.sep)) return { ok: false, error: 'Not a recording in the parent folder' };
+  try {
+    return { ok: true, requests: await readHarRequests(file) };
+  } catch (error) {
+    return failure(error);
+  }
+});
 
 ipcMain.handle('copy-text', async (_event, text: string) => clipboard.writeText(text));
 
@@ -441,7 +517,7 @@ async function remoteRecord(body: Record<string, unknown>): Promise<unknown> {
   try {
     const feature = parseSteps(await fs.readFile(featurePath, 'utf-8'));
     const target = body.tab ? { tab: String(body.tab) } : { window: String(body.window) };
-    return await askRenderer('record', { feature, source: path.basename(featurePath), ...target, subject: body.subject, config: body.config });
+    return await askRenderer('record', { feature, source: path.basename(featurePath), ...target, subject: body.subject, config: body.config, run: body.run });
   } catch (error) {
     return failure(error);
   }

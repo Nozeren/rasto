@@ -11,8 +11,36 @@ interface CaptureSource {
 }
 
 type SaveResult =
-  | { ok: true; path: string; bytes: number; preset: string; log: string; network?: { har: string; requests: number; failed: number } }
+  | { ok: true; path: string; bytes: number; preset: string; log: string; network?: { har: string; requests: number; failed: number }; clips?: SavedClip[] }
   | { ok: false; error: string; raw: string };
+
+/** A clip saved next to the recording (clips.ts). */
+interface SavedClip {
+  case: string;
+  kind: 'case' | 'failure';
+  file: string;
+  from: string;
+  to: string;
+}
+
+/** A capture left by a crash (unsaved.ts), offered on the Cases screen. */
+interface UnsavedRecording {
+  id: string;
+  bytes: number;
+  startedAt: string;
+  durationMs: number;
+  cases: string[];
+  folder: string;
+}
+
+/** How posting one case to TestRail went (report.ts). */
+interface TestRailCaseOutcome {
+  case: string;
+  status: 'posted' | 'skipped' | 'error';
+  detail: string;
+}
+
+type TestRailPostResult = { ok: true; run: number; cases: TestRailCaseOutcome[] } | { ok: false; error: string };
 
 type HotkeyAction = 'next' | 'previous' | 'pause' | 'pass' | 'fail' | 'blocked';
 
@@ -31,6 +59,9 @@ interface Preferences {
   browserNetwork: boolean;
   keepSecrets: boolean;
   browserPort: number;
+  clips: boolean;
+  failureClipSec: number;
+  showInput: boolean;
 }
 
 interface AppSettings {
@@ -57,6 +88,7 @@ interface LoggedStep {
   part?: string;
   atMs: number;
   console?: LoggedConsoleEntry[];
+  actions?: LoggedAction[];
 }
 
 /** A browser console entry (console.ts), as main sends it and as the step log keeps it. */
@@ -64,6 +96,23 @@ interface ConsoleEntry {
   level: 'log' | 'info' | 'warn' | 'error';
   text: string;
   source?: string;
+}
+
+/** A click, typing, a choice or a special key in a recorded browser tab (screencast.ts). */
+interface InputEvent {
+  kind: 'click' | 'type' | 'select' | 'key';
+  x?: number;
+  y?: number;
+  text: string;
+  value?: string;
+}
+
+/** An input event as the step log keeps it: what was done, at what time in the video. */
+interface LoggedAction {
+  kind: 'click' | 'type' | 'select' | 'key';
+  text: string;
+  value?: string;
+  atMs: number;
 }
 
 interface LoggedConsoleEntry extends ConsoleEntry {
@@ -76,6 +125,7 @@ interface LoggedCase {
   row: string | null;
   title: string;
   result: CaseResult | null;
+  resultAtMs?: number;
   guide?: boolean;
   steps: LoggedStep[];
 }
@@ -182,11 +232,33 @@ interface HistoryEntry {
   startedAt: string;
   duration: string;
   overall: string;
-  cases: { id: string; row: string | null; title: string; result: string; steps: { at: string; step: string; text: string }[] }[];
+  cases: { id: string; row: string | null; title: string; result: string; steps: HistoryStep[] }[];
+  browserConsole?: string;
+  har?: string;
+  network?: { har: string; requests: number; failed: number };
+  clips: SavedClip[];
+}
+
+interface HistoryStep {
+  at: string;
+  step: string;
+  text: string;
+  console?: { at: string; level: string; text: string; source?: string; paused?: boolean }[];
+  actions?: { at: string; kind: string; text: string; value?: string }[];
+}
+
+interface HistoryRequest {
+  at: number;
+  method: string;
+  url: string;
+  status: number;
+  error?: string;
+  failed: boolean;
 }
 
 interface RecorderApi {
   historyList(): Promise<HistoryEntry[]>;
+  historyNetwork(har: string): Promise<{ ok: true; requests: HistoryRequest[] } | Failure>;
   copyText(text: string): Promise<void>;
   getTestRail(): Promise<TestRailInfo>;
   setTestRail(input: { url: string; user: string; apiKey?: string }): Promise<TestRailSaveResult>;
@@ -203,7 +275,14 @@ interface RecorderApi {
   setHotkey(action: HotkeyAction, accelerator: string): Promise<SetHotkeyResult>;
   onHotkey(callback: (action: HotkeyAction | 'stop') => void): void;
   listSources(): Promise<CaptureSource[]>;
-  saveRecording(data: ArrayBuffer, meta: RecordingMeta): Promise<SaveResult>;
+  captureBegin(): Promise<string>;
+  captureChunk(data: ArrayBuffer): void;
+  captureSnapshot(meta: RecordingMeta): void;
+  saveRecording(meta: RecordingMeta): Promise<SaveResult>;
+  unsavedList(): Promise<UnsavedRecording[]>;
+  unsavedSave(id: string): Promise<SaveResult>;
+  unsavedDiscard(id: string): Promise<void>;
+  testrailPost(run: string): Promise<TestRailPostResult>;
   previewOutput(): Promise<OutputPreview>;
   guideFileToken(title: string): Promise<string>;
   browserStart(options: { console: boolean; network: boolean }): Promise<{ ok: true } | Failure>;
@@ -212,7 +291,8 @@ interface RecorderApi {
   listTabs(): Promise<CaptureSource[]>;
   screencastStart(tabId: string): Promise<{ ok: true } | Failure>;
   screencastStop(): Promise<void>;
-  onFrame(callback: (data: string) => void): void;
+  onFrame(callback: (frame: { data: string; viewport: { width: number; height: number } }) => void): void;
+  onInput(callback: (event: InputEvent) => void): void;
   setOutput(output: Partial<OutputSettings>): Promise<OutputPreview>;
   chooseOutputRoot(): Promise<string | null>;
   setPreferences(preferences: Partial<Preferences>): Promise<AppSettings>;

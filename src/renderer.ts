@@ -79,6 +79,10 @@ let loadedFeature: GherkinFeature | null = null;
 let scenarioIndex = 0;
 let rowIndex = 0;
 let runTests: RunTest[] = [];
+/** The TestRail run last loaded (R100): step ③ offers to post the results to it. */
+let loadedRunId: number | null = null;
+/** How posting the last recording to TestRail went, for the Done screen and the remote status. */
+let testrailOutcome: { state: 'posting' | 'done' | 'error'; run: string; cases?: TestRailCaseOutcome[]; error?: string } | null = null;
 let queue: ActiveCase[] = [];
 
 // Source + preview
@@ -87,12 +91,21 @@ let stream: MediaStream | null = null;
 /** A browser tab recorded through DevTools (kind 'tab'): its latest frame, drawn like a captured window's. */
 let tabFrame: HTMLImageElement | null = null;
 let tabStreaming = false;
+/** The tab's viewport in CSS pixels (from the last frame), to place clicks on the canvas. */
+let tabViewport = { width: 0, height: 0 };
+/** Clicks being drawn as ripples, and the label of the last click or typing (screencast.ts INPUT_TRACKER). */
+let inputRipples: { x: number; y: number; at: number }[] = [];
+let inputLabel: { text: string; until: number } | null = null;
+const RIPPLE_MS = 700;
+const INPUT_LABEL_MS = 1800;
 let drawHandle: number | undefined;
 
 // Recording
 // Not named `recorder`: that would clash with the global `window.recorder` API the preload exposes.
 let mediaRecorder: MediaRecorder | null = null;
-let chunks: Blob[] = [];
+/** Chunks go to main (unsaved.ts) as they come, one after another; finishing waits for the last one. */
+let chunkWrites: Promise<void> = Promise.resolve();
+let snapshotHandle: number | undefined;
 let timerHandle: number | undefined;
 let runCases: ActiveCase[] = [];
 let runIndex = 0;
@@ -447,6 +460,8 @@ async function loadInput(input: string): Promise<void> {
   }
   if (result.kind === 'run') {
     runTests = result.run.tests;
+    loadedRunId = result.run.id;
+    $<HTMLInputElement>('out-run').value = `R${result.run.id}`;
     $<HTMLDivElement>('run-title').textContent = `Run ${result.run.id} · ${result.run.name} · ${runTests.length} tests`;
     $<HTMLDivElement>('run-box').hidden = false;
     $<HTMLInputElement>('run-filter').value = '';
@@ -575,12 +590,15 @@ function stopPreview(): void {
   if (tabStreaming) void window.recorder.screencastStop();
   tabStreaming = false;
   tabFrame = null;
+  inputRipples = [];
+  inputLabel = null;
 }
 
 let firstFrame: (() => void) | null = null;
 
-window.recorder.onFrame((data) => {
+window.recorder.onFrame(({ data, viewport }) => {
   if (!tabStreaming) return;
+  tabViewport = viewport;
   const image = new Image();
   image.onload = () => {
     tabFrame = image;
@@ -589,6 +607,79 @@ window.recorder.onFrame((data) => {
   };
   image.src = `data:image/jpeg;base64,${data}`;
 });
+
+function inputText(event: InputEvent): string {
+  if (event.kind === 'click') return `Click · ${event.text}`;
+  if (event.kind === 'type') return `Type · ${event.text}: ${event.value ?? ''}`;
+  if (event.kind === 'select') return `Choose · ${event.text}: ${event.value ?? ''}`;
+  return `Key · ${event.text}`;
+}
+
+/** A click or typing in the recorded tab: drawn on the next frames, and logged under the step on screen. */
+window.recorder.onInput((event) => {
+  if (!tabStreaming) return;
+  const now = Date.now();
+  if (event.kind === 'click' && event.x !== undefined && event.y !== undefined) inputRipples.push({ x: event.x, y: event.y, at: now });
+  inputLabel = { text: inputText(event), until: now + INPUT_LABEL_MS };
+  if (!isRecording()) return;
+  const step = loggedCases[loggedCases.length - 1]?.steps.at(-1);
+  if (!step) return;
+  const actions = (step.actions ??= []);
+  const last = actions.at(-1);
+  // Typing in the same field is one action holding its final value.
+  if (event.kind === 'type' && last?.kind === 'type' && last.text === event.text) {
+    last.value = event.value;
+    return;
+  }
+  actions.push({ kind: event.kind, text: event.text, ...(event.value !== undefined ? { value: event.value } : {}), atMs: elapsedMs() });
+});
+
+/** Ripples where the tab was clicked (under the banner). */
+function drawRipples(width: number, height: number): void {
+  const now = Date.now();
+  inputRipples = inputRipples.filter((r) => now - r.at < RIPPLE_MS);
+  if (!inputRipples.length || !tabViewport.width) return;
+  const scale = Math.max(0.6, width / 1280);
+  for (const ripple of inputRipples) {
+    const t = (now - ripple.at) / RIPPLE_MS;
+    const x = (ripple.x * width) / tabViewport.width;
+    const y = (ripple.y * height) / tabViewport.height;
+    ctx.beginPath();
+    ctx.arc(x, y, (10 + 26 * t) * scale, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 59, 48, ${0.22 * (1 - t)})`;
+    ctx.fill();
+    ctx.lineWidth = 3 * scale;
+    ctx.strokeStyle = `rgba(255, 59, 48, ${1 - t})`;
+    ctx.stroke();
+    if (t < 0.5) {
+      ctx.beginPath();
+      ctx.arc(x, y, 5 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 59, 48, 0.9)';
+      ctx.fill();
+    }
+  }
+}
+
+/** What was last clicked or typed, in a pill just above the banner. */
+function drawInputLabel(width: number, height: number): void {
+  if (!inputLabel || Date.now() > inputLabel.until || currentCard()) return;
+  const barHeight = Math.max(36, Math.round(height * 0.055));
+  const font = Math.round(barHeight * 0.4);
+  const pad = Math.round(barHeight * 0.3);
+  ctx.font = `600 ${font}px ${BANNER_FONT}`;
+  ctx.textBaseline = 'middle';
+  const text = fitText(inputLabel.text, width * 0.6);
+  const pillWidth = ctx.measureText(text).width + 2 * pad;
+  const pillHeight = Math.round(font * 1.9);
+  const x = pad;
+  const y = height - barHeight - pad - pillHeight;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, pillWidth, pillHeight, pillHeight / 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, x + pad, y + pillHeight / 2);
+}
 
 /** Streams a browser tab's frames (screencast.ts) and sizes the video to the first one. */
 async function startTabPreview(source: CaptureSource): Promise<void> {
@@ -893,11 +984,13 @@ function drawFrame(): void {
   if (tabStreaming) {
     if (!tabFrame) return;
     ctx.drawImage(tabFrame, 0, 0, canvasEl.width, canvasEl.height);
+    drawRipples(canvasEl.width, canvasEl.height);
   } else {
     if (sourceVideo.readyState < 2) return;
     ctx.drawImage(sourceVideo, 0, 0, canvasEl.width, canvasEl.height);
   }
   drawBanner(canvasEl.width, canvasEl.height);
+  if (tabStreaming) drawInputLabel(canvasEl.width, canvasEl.height);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1060,21 +1153,30 @@ async function startRecording(): Promise<void> {
   window.setTimeout(pushHud, 400);
   if (countdownUntil) {
     $<HTMLSpanElement>('rec-progress').textContent = 'Starting…';
-    countdownHandle = window.setTimeout(beginCapture, countdownUntil - Date.now());
+    countdownHandle = window.setTimeout(() => void beginCapture(), countdownUntil - Date.now());
   } else {
-    beginCapture();
+    await beginCapture();
   }
 }
 
+/** The step log as it stands, for the crash copy next to the capture and for saving. */
+function currentMeta(): RecordingMeta {
+  return { startedAt: runStartedAt, durationMs: elapsedMs(), cases: loggedCases, browserConsole, network: browserNetwork, timeline };
+}
+
 /** Starts the actual recording once the countdown is over. */
-function beginCapture(): void {
+async function beginCapture(): Promise<void> {
   countdownUntil = 0;
   countdownHandle = undefined;
+  // The capture file must exist before the first chunk (it carries the WebM header).
+  await window.recorder.captureBegin();
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
   mediaRecorder = new MediaRecorder(canvasEl.captureStream(CAPTURE_FPS), { mimeType });
-  chunks = [];
+  chunkWrites = Promise.resolve();
   mediaRecorder.ondataavailable = (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
+    if (event.data.size === 0) return;
+    const data = event.data;
+    chunkWrites = chunkWrites.then(async () => window.recorder.captureChunk(await data.arrayBuffer()));
   };
   mediaRecorder.onstop = () => void finishRecording();
   mediaRecorder.start(1000);
@@ -1097,6 +1199,8 @@ function beginCapture(): void {
     $<HTMLSpanElement>('rec-timer').textContent = formatDuration(elapsedMs());
     if ((currentCard()?.title ?? null) !== hudCardTitle) pushHud();
   }, 250);
+  // If Rasto crashes, the capture on disk is saved later with this step log (at most 2 s old).
+  snapshotHandle = window.setInterval(() => window.recorder.captureSnapshot(currentMeta()), 2000);
   renderRecording();
   pushHud();
 }
@@ -1141,6 +1245,7 @@ function recordResult(result: CaseResult): void {
   const current = loggedCases[loggedCases.length - 1];
   if (!current) return;
   current.result = result;
+  current.resultAtMs = elapsedMs();
 
   if (activeCase.guide) {
     // A guide ends on its last step: no closing card.
@@ -1181,6 +1286,7 @@ function stopRecording(): void {
   if (!paused) activeMs += Date.now() - segmentStart;
   paused = false;
   window.clearInterval(timerHandle);
+  window.clearInterval(snapshotHandle);
   mediaRecorder?.stop();
   document.querySelector('.rec-dot')?.classList.remove('paused');
   $<HTMLButtonElement>('pause').textContent = 'Ⅱ Pause';
@@ -1210,9 +1316,7 @@ function networkSummary(meta: RecordingMeta, network?: { har: string; requests: 
 
 async function finishRecording(): Promise<void> {
   await window.recorder.browserStop();
-  const meta: RecordingMeta = { startedAt: runStartedAt, durationMs: activeMs, cases: loggedCases, browserConsole, network: browserNetwork, timeline };
-  const blob = new Blob(chunks, { type: 'video/webm' });
-  chunks = [];
+  const meta: RecordingMeta = { ...currentMeta(), durationMs: activeMs };
   mediaRecorder = null;
   activeCase = null;
   stopPreview();
@@ -1230,20 +1334,32 @@ async function finishRecording(): Promise<void> {
   renderDoneCases();
   setDoneActions(false);
 
+  testrailOutcome = null;
+  renderTestRail();
+  $<HTMLButtonElement>('record-again').hidden = false;
   compressing = true;
-  const result = await window.recorder.saveRecording(await blob.arrayBuffer(), meta);
+  await chunkWrites;
+  const result = await window.recorder.saveRecording(meta);
   compressing = false;
-  progress.hidden = true;
-  setDoneActions(true);
+  await showSaveResult(result, meta);
+  const run = $<HTMLInputElement>('out-run').value.trim();
+  if (result.ok && run && !loggedCases.some((c) => c.guide)) await postToTestRail(run);
+}
 
+/** The Done screen once a recording is saved (or failed to): file, size, what else was saved. */
+async function showSaveResult(result: SaveResult, meta: RecordingMeta | null): Promise<void> {
+  $<HTMLProgressElement>('progress').hidden = true;
+  setDoneActions(true);
   if (result.ok) {
     lastSavedPath = result.path;
     const failed = loggedCases.some((c) => c.result === 'fail');
     $<HTMLDivElement>('done-icon').textContent = failed ? '⚠️' : '✅';
     $<HTMLDivElement>('done-title').textContent = 'Recording saved';
     $<HTMLElement>('done-file').textContent = result.path.split(/[\\/]/).pop() ?? result.path;
-    $<HTMLDivElement>('done-meta').textContent =
-      `${formatBytes(result.bytes)} · ${formatDuration(meta.durationMs)} · step log saved next to it${consoleSummary(meta)}${networkSummary(meta, result.network)} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`;
+    const clips = result.clips?.length ? ` · ${result.clips.length} clip${result.clips.length === 1 ? '' : 's'} in the folder of the same name` : '';
+    $<HTMLDivElement>('done-meta').textContent = meta
+      ? `${formatBytes(result.bytes)} · ${formatDuration(meta.durationMs)} · steps as chapters and subtitles · step log saved next to it${clips}${consoleSummary(meta)}${networkSummary(meta, result.network)} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`
+      : `${formatBytes(result.bytes)} · step log saved next to it${clips} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`;
     settings = (await window.recorder.getSettings()).settings;
   } else {
     lastSavedPath = result.raw;
@@ -1251,6 +1367,99 @@ async function finishRecording(): Promise<void> {
     $<HTMLDivElement>('done-title').textContent = 'Compression failed';
     $<HTMLDivElement>('done-meta').textContent = `${result.error}. The raw capture was kept at ${result.raw}`;
   }
+}
+
+/** Posts the recording just saved to a TestRail run, and shows how each case went. */
+async function postToTestRail(run: string): Promise<void> {
+  testrailOutcome = { state: 'posting', run };
+  renderTestRail();
+  const result = await window.recorder.testrailPost(run);
+  testrailOutcome = result.ok
+    ? { state: 'done', run: `R${result.run}`, cases: result.cases }
+    : { state: 'error', run, error: result.error };
+  renderTestRail();
+}
+
+function renderTestRail(): void {
+  const box = $<HTMLDivElement>('done-testrail');
+  box.innerHTML = '';
+  box.hidden = !testrailOutcome;
+  if (!testrailOutcome) return;
+  const { state, run } = testrailOutcome;
+  if (state === 'posting') {
+    box.append(el('div', 'label', `Posting to TestRail ${run}…`));
+    return;
+  }
+  if (state === 'error') {
+    box.append(el('div', 'label', `TestRail ${run}: not posted`), el('div', 'error', testrailOutcome.error ?? ''));
+    return;
+  }
+  const cases = testrailOutcome.cases ?? [];
+  const posted = cases.filter((c) => c.status === 'posted').length;
+  box.append(el('div', 'label', `TestRail ${run}: ${posted} of ${cases.length} case${cases.length === 1 ? '' : 's'} posted`));
+  const list = el('ul');
+  for (const c of cases) {
+    const li = el('li', c.status);
+    li.append(el('b', '', `${c.status === 'posted' ? '✓' : c.status === 'skipped' ? '–' : '✗'} ${c.case}`), document.createTextNode(` ${c.detail}`));
+    list.appendChild(li);
+  }
+  box.appendChild(list);
+  if (cases.some((c) => c.status === 'error')) {
+    const retry = el('button', 'link', 'Try again');
+    retry.type = 'button';
+    retry.addEventListener('click', () => void postToTestRail(run));
+    box.appendChild(retry);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Recordings left by a crash (unsaved.ts): offered on the Cases screen, saved the usual way or discarded
+
+async function renderUnsaved(): Promise<void> {
+  const box = $<HTMLDivElement>('unsaved');
+  const found = await window.recorder.unsavedList();
+  box.innerHTML = '';
+  box.hidden = !found.length;
+  for (const u of found) {
+    const row = el('div', 'unsaved-row');
+    const when = u.startedAt ? new Date(u.startedAt).toLocaleString() : 'unknown time';
+    row.append(el('div', 'text', `A recording didn't finish saving: ${u.cases.join(', ') || 'no cases'} · ${when} · ${formatDuration(u.durationMs)} · ${formatBytes(u.bytes)}`));
+    const save = el('button', 'primary', 'Save it');
+    save.type = 'button';
+    save.addEventListener('click', () => void recoverUnsaved(u));
+    const discard = el('button', '', 'Discard');
+    discard.type = 'button';
+    discard.addEventListener('click', async () => {
+      if (!window.confirm('Discard this recording? It cannot be recovered afterwards.')) return;
+      await window.recorder.unsavedDiscard(u.id);
+      await renderUnsaved();
+    });
+    row.append(save, discard);
+    box.appendChild(row);
+  }
+}
+
+async function recoverUnsaved(u: UnsavedRecording): Promise<void> {
+  loggedCases = [];
+  testrailOutcome = null;
+  renderTestRail();
+  showView('done');
+  $<HTMLDivElement>('done-icon').textContent = '⏳';
+  $<HTMLDivElement>('done-title').textContent = `Saving the unfinished recording (${formatDuration(u.durationMs)})…`;
+  $<HTMLElement>('done-file').textContent = '';
+  $<HTMLDivElement>('done-meta').textContent = `Into ${u.folder}`;
+  $<HTMLOListElement>('done-cases').innerHTML = '';
+  // Its cases aren't loaded: "the same cases again" would record whatever is queued.
+  $<HTMLButtonElement>('record-again').hidden = true;
+  const progress = $<HTMLProgressElement>('progress');
+  progress.value = 0;
+  progress.hidden = false;
+  setDoneActions(false);
+  compressing = true;
+  const result = await window.recorder.unsavedSave(u.id);
+  compressing = false;
+  await showSaveResult(result, null);
+  await renderUnsaved();
 }
 
 /** A case's result as shown: a guide that ended with Done shows 'done' (it is recorded as 'pass'). Same as output.ts. */
@@ -1381,27 +1590,222 @@ function selectRun(entry: HistoryEntry): void {
   // A guide's steps come from its .md file, not from TestRail.
   $<HTMLButtonElement>('hr-load').hidden = entry.kind === 'guide';
 
+  renderEvidence(entry, null);
+  renderClips(entry);
+  showPlaying(entry, null);
+  renderHistorySteps(entry, null);
+  // The requests come from the .har: read it after the rest is shown, and only use it if this run is still selected.
+  if (entry.har) {
+    void window.recorder.historyNetwork(entry.har).then((result) => {
+      if (selectedRun !== entry || !result.ok) return;
+      renderEvidence(entry, result.requests);
+      renderHistorySteps(entry, result.requests);
+    });
+  }
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/** A small pill for the evidence row; `kind` colours it (error, warn, ok, muted). */
+function chip(text: string, kind: 'error' | 'warn' | 'ok' | 'muted' | '' = ''): HTMLSpanElement {
+  const node = el('span', `chip${kind ? ` ${kind}` : ''}`, text);
+  return node;
+}
+
+/** What the recording holds besides the video: console, network, clicks and typing, clips. */
+function renderEvidence(entry: HistoryEntry, requests: HistoryRequest[] | null): void {
+  const box = $<HTMLDivElement>('hr-evidence');
+  box.innerHTML = '';
+  const steps = entry.cases.flatMap((c) => c.steps);
+  if (entry.browserConsole === 'captured') {
+    const entries = steps.flatMap((s) => s.console ?? []);
+    const errors = entries.filter((e) => e.level === 'error').length;
+    const warnings = entries.filter((e) => e.level === 'warn').length;
+    box.append(errors || warnings
+      ? chip(`Console: ${[errors && plural(errors, 'error'), warnings && plural(warnings, 'warning')].filter(Boolean).join(', ')}`, errors ? 'error' : 'warn')
+      : chip('Console: no errors', 'ok'));
+  } else if (entry.browserConsole) {
+    box.append(chip(`Console ${entry.browserConsole}`, 'muted'));
+  }
+  if (entry.network) {
+    const failed = requests ? requests.filter((r) => r.failed).length : entry.network.failed;
+    const total = requests ? requests.length : entry.network.requests;
+    box.append(chip(`Network: ${plural(total, 'request')}${failed ? `, ${failed} failed` : ''}`, failed ? 'error' : 'ok'));
+    const show = el('button', 'link', 'Show .har');
+    show.type = 'button';
+    show.addEventListener('click', () => entry.har && void window.recorder.reveal(entry.har));
+    box.append(show);
+  }
+  const actions = steps.reduce((n, s) => n + (s.actions?.length ?? 0), 0);
+  if (actions) box.append(chip(plural(actions, 'click / typing'), ''));
+  if (entry.clips.length) box.append(chip(plural(entry.clips.length, 'clip'), ''));
+  box.hidden = !box.childElementCount;
+}
+
+function renderClips(entry: HistoryEntry): void {
+  const list = $<HTMLDivElement>('hr-clips');
+  list.innerHTML = '';
+  $<HTMLDivElement>('hr-clips-box').hidden = !entry.clips.length;
+  for (const clip of entry.clips) {
+    const button = el('button', `hr-clip${clip.kind === 'failure' ? ' failure' : ''}`);
+    button.type = 'button';
+    button.title = clip.file;
+    button.append(
+      el('b', '', clip.case),
+      el('span', '', clip.kind === 'failure' ? 'before Fail' : 'case'),
+      el('span', 'hint', `${clip.from} → ${clip.to}`),
+    );
+    button.addEventListener('click', () => playClip(entry, clip));
+    list.appendChild(button);
+  }
+}
+
+/** Says when a clip is playing instead of the whole recording, with the way back. */
+function showPlaying(entry: HistoryEntry, clip: SavedClip | null): void {
+  const box = $<HTMLDivElement>('hr-playing');
+  box.innerHTML = '';
+  box.hidden = !clip;
+  if (!clip) return;
+  box.append(document.createTextNode(`Playing the clip ${clip.file.split(/[\\/]/).pop()} (${clip.from} → ${clip.to} of the recording). `));
+  const back = el('button', 'link', 'Back to the whole recording');
+  back.type = 'button';
+  back.addEventListener('click', () => jumpTo(entry, parseAt(clip.from), false));
+  box.appendChild(back);
+}
+
+function playClip(entry: HistoryEntry, clip: SavedClip): void {
+  const video = $<HTMLVideoElement>('hr-video');
+  video.hidden = false;
+  video.src = fileUrl(clip.file);
+  showPlaying(entry, clip);
+  void video.play();
+}
+
+/** Plays the whole recording from `seconds` (switching back from a clip if one is playing). */
+function jumpTo(entry: HistoryEntry, seconds: number, play = true): void {
+  if (!entry.videoExists) return;
+  const video = $<HTMLVideoElement>('hr-video');
+  const whole = fileUrl(entry.video);
+  const seek = () => {
+    video.currentTime = seconds;
+    if (play) void video.play();
+  };
+  showPlaying(entry, null);
+  if (video.src === whole) {
+    seek();
+    return;
+  }
+  video.src = whole;
+  video.addEventListener('loadedmetadata', seek, { once: true });
+}
+
+function actionText(a: { kind: string; text: string; value?: string }): string {
+  if (a.kind === 'click') return `Click · ${a.text}`;
+  if (a.kind === 'type') return `Type · ${a.text}: ${a.value ?? ''}`;
+  if (a.kind === 'select') return `Choose · ${a.text}: ${a.value ?? ''}`;
+  return `Key · ${a.text}`;
+}
+
+/** The steps, each with what happened while it was on screen (folded, with a one-line summary). */
+function renderHistorySteps(entry: HistoryEntry, requests: HistoryRequest[] | null): void {
   const steps = $<HTMLDivElement>('hr-steps');
+  // Keep the steps that were unfolded unfolded when the requests arrive.
+  const open = new Set([...steps.querySelectorAll<HTMLDetailsElement>('details[open]')].map((d) => d.dataset.key));
   steps.innerHTML = '';
   runMarks = [];
-  for (const c of entry.cases) {
-    const head = el('div', 'hr-case');
-    head.append(resultPill(c.result), el('span', '', entry.kind === 'guide' ? 'Guide' : `${c.id}${c.row ? ` · ${c.row}` : ''}`), el('span', 'hint', c.title));
-    steps.appendChild(head);
-    for (const step of c.steps) {
-      const row = el('button', 'hr-step');
-      row.type = 'button';
-      row.append(el('span', 'at', step.at), el('span', 'pos', step.step), el('span', '', step.text));
-      const seconds = parseAt(step.at);
-      row.addEventListener('click', () => {
-        if (!entry.videoExists) return;
-        video.currentTime = seconds;
-        void video.play();
-      });
-      steps.appendChild(row);
-      runMarks.push({ seconds, el: row });
+  const rows = entry.cases.flatMap((c, ci) => c.steps.map((step, si) => ({ c, step, key: `${ci}:${si}`, seconds: parseAt(step.at) })));
+  // A request belongs to the step on screen when it was made: the last one shown at or before it.
+  const byRow = new Map<string, HistoryRequest[]>();
+  for (const request of requests ?? []) {
+    const row = [...rows].reverse().find((r) => r.seconds <= request.at + 0.05) ?? rows[0];
+    if (!row) continue;
+    byRow.set(row.key, [...(byRow.get(row.key) ?? []), request]);
+  }
+
+  let lastCase: HistoryEntry['cases'][number] | null = null;
+  for (const { c, step, key, seconds } of rows) {
+    if (c !== lastCase) {
+      lastCase = c;
+      const head = el('div', 'hr-case');
+      head.append(resultPill(c.result), el('span', '', entry.kind === 'guide' ? 'Guide' : `${c.id}${c.row ? ` · ${c.row}` : ''}`), el('span', 'hint', c.title));
+      steps.appendChild(head);
+    }
+    const row = el('button', 'hr-step');
+    row.type = 'button';
+    row.append(el('span', 'at', step.at), el('span', 'pos', step.step), el('span', '', step.text));
+    row.addEventListener('click', () => jumpTo(entry, seconds));
+    steps.appendChild(row);
+    runMarks.push({ seconds, el: row });
+
+    const extras = stepExtras(entry, step, byRow.get(key) ?? []);
+    if (!extras) continue;
+    extras.dataset.key = key;
+    if (open.has(key)) extras.open = true;
+    steps.appendChild(extras);
+  }
+  if (!rows.length) {
+    // Cases without steps still show their result.
+    for (const c of entry.cases) {
+      const head = el('div', 'hr-case');
+      head.append(resultPill(c.result), el('span', '', `${c.id}${c.row ? ` · ${c.row}` : ''}`), el('span', 'hint', c.title));
+      steps.appendChild(head);
     }
   }
+}
+
+/** The folded list under a step: console errors / warnings, failed requests, clicks and typing; null when none. */
+function stepExtras(entry: HistoryEntry, step: HistoryStep, requests: HistoryRequest[]): HTMLDetailsElement | null {
+  const problems = (step.console ?? []).filter((e) => e.level === 'error' || e.level === 'warn');
+  const logs = (step.console ?? []).length - problems.length;
+  const failed = requests.filter((r) => r.failed);
+  const actions = step.actions ?? [];
+  if (!problems.length && !failed.length && !actions.length && !logs && !requests.length) return null;
+
+  const errors = problems.filter((e) => e.level === 'error').length;
+  const warnings = problems.length - errors;
+  const parts = [
+    errors && plural(errors, 'error'),
+    warnings && plural(warnings, 'warning'),
+    requests.length && (failed.length ? `${failed.length} of ${plural(requests.length, 'request')} failed` : plural(requests.length, 'request')),
+    actions.length && plural(actions.length, 'click / typing'),
+    logs && plural(logs, 'log'),
+  ].filter(Boolean) as string[];
+
+  const details = el('details', `hr-extras${errors || failed.length ? ' bad' : warnings ? ' warn' : ''}`);
+  details.appendChild(el('summary', '', parts.join(' · ')));
+  const list = el('ul');
+  type Item = { seconds: number; at: string; kind: string; text: string; detail?: string };
+  const items: Item[] = [
+    ...problems.map((e) => ({ seconds: parseAt(e.at), at: e.at, kind: e.level, text: e.text.split('\n')[0], detail: e.source })),
+    ...failed.map((r) => ({
+      seconds: r.at,
+      at: formatAt(r.at),
+      kind: 'request',
+      text: `${r.method} ${r.status || r.error || 'failed'} ${r.url}`,
+    })),
+    ...actions.map((a) => ({ seconds: parseAt(a.at), at: a.at, kind: 'action', text: actionText(a) })),
+  ].sort((a, b) => a.seconds - b.seconds);
+  for (const item of items) {
+    const li = el('li', item.kind);
+    const at = el('button', 'at link', item.at);
+    at.type = 'button';
+    at.addEventListener('click', () => jumpTo(entry, item.seconds));
+    li.append(at, el('span', 'text', item.text));
+    if (item.detail) li.title = item.detail;
+    list.appendChild(li);
+  }
+  if (logs) list.appendChild(el('li', 'muted', `${plural(logs, 'console.log')} more in the step log`));
+  if (requests.length > failed.length) list.appendChild(el('li', 'muted', `${plural(requests.length - failed.length, 'request')} that worked, in the .har`));
+  details.appendChild(list);
+  return details;
+}
+
+/** 83.4 → "01:23.4" */
+function formatAt(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  return `${String(m).padStart(2, '0')}:${(seconds - m * 60).toFixed(1).padStart(4, '0')}`;
 }
 
 /** Highlights the step being shown while the video plays. */
@@ -1470,6 +1874,7 @@ function remoteStatus(): Record<string, unknown> {
     saved,
     chapters: saved && guide ? saved.replace(/\.mp4$/, '.md') : null,
     card: currentCard()?.title ?? null,
+    testrail: testrailOutcome,
   };
 }
 
@@ -1516,6 +1921,8 @@ async function remoteRecord(args: Record<string, unknown>): Promise<Record<strin
   applyOutputPreview(await window.recorder.previewOutput());
   if (typeof args.subject === 'string') $<HTMLInputElement>('out-subject').value = args.subject;
   if (typeof args.config === 'string') $<HTMLInputElement>('out-config').value = args.config;
+  // Posting to TestRail only when the caller asks: a remote run never inherits a run typed in the UI.
+  $<HTMLInputElement>('out-run').value = typeof args.run === 'string' ? args.run : '';
   await startRecording();
   if (!activeCase) return { ok: false, error: `Could not start recording "${source.name}"` };
   return { ok: true, cases: queue.map((c) => c.label), ...(source.kind === 'tab' ? { tab: source.name } : { window: source.name }) };
@@ -1611,6 +2018,9 @@ async function openSettings(): Promise<void> {
   $<HTMLInputElement>('pref-network').checked = settings.preferences.browserNetwork;
   $<HTMLInputElement>('pref-secrets').checked = settings.preferences.keepSecrets;
   $<HTMLInputElement>('browser-port').value = String(settings.preferences.browserPort);
+  $<HTMLInputElement>('pref-clips').checked = settings.preferences.clips;
+  $<HTMLInputElement>('pref-input').checked = settings.preferences.showInput;
+  $<HTMLInputElement>('failure-clip').value = String(settings.preferences.failureClipSec);
   showTestRailInfo(await window.recorder.getTestRail());
   $<HTMLDialogElement>('settings').showModal();
 }
@@ -1769,6 +2179,19 @@ $<HTMLInputElement>('pref-remote').addEventListener('change', async (event) => {
 $<HTMLInputElement>('pref-console').addEventListener('change', async (event) => {
   settings = await window.recorder.setPreferences({ browserConsole: (event.target as HTMLInputElement).checked });
 });
+$<HTMLInputElement>('pref-input').addEventListener('change', async (event) => {
+  settings = await window.recorder.setPreferences({ showInput: (event.target as HTMLInputElement).checked });
+  // The tab being previewed picks it up when its stream restarts.
+  if (tabStreaming && !isRecording()) void startPreview();
+});
+$<HTMLInputElement>('pref-clips').addEventListener('change', async (event) => {
+  settings = await window.recorder.setPreferences({ clips: (event.target as HTMLInputElement).checked });
+});
+$<HTMLInputElement>('failure-clip').addEventListener('change', async (event) => {
+  const value = Math.max(0, Math.min(300, Math.round(Number((event.target as HTMLInputElement).value) || 0)));
+  (event.target as HTMLInputElement).value = String(value);
+  settings = await window.recorder.setPreferences({ failureClipSec: value });
+});
 $<HTMLInputElement>('pref-network').addEventListener('change', async (event) => {
   settings = await window.recorder.setPreferences({ browserNetwork: (event.target as HTMLInputElement).checked });
 });
@@ -1812,9 +2235,12 @@ window.recorder.onRemoteCommand(async (request) => {
 window.recorder.onCompressProgress(({ fraction, preset }) => {
   $<HTMLProgressElement>('progress').value = fraction;
   if (preset === 'B') $<HTMLDivElement>('done-title').textContent = 'Still above the size limit, re-encoding smaller…';
+  if (preset === 'steps') $<HTMLDivElement>('done-title').textContent = 'Adding the steps as chapters and subtitles…';
+  if (preset === 'clips') $<HTMLDivElement>('done-title').textContent = 'Cutting the clips…';
 });
 
 void (async () => {
+  void renderUnsaved();
   const loaded = await window.recorder.getSettings();
   settings = loaded.settings;
   if (loaded.failed.length) {

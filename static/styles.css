@@ -230,6 +230,18 @@ button.result.blocked { background: var(--blocked); border-color: var(--blocked)
 .done-view progress { width: 100%; }
 .done-view .queue { width: 100%; text-align: left; }
 .done-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+.run-hint { margin-top: -6px; }
+.done-testrail { width: 100%; text-align: left; font-size: 13px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.done-testrail ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.done-testrail li { overflow-wrap: anywhere; }
+.done-testrail li.posted b { color: var(--pass); }
+.done-testrail li.error b, .done-testrail .error { color: var(--danger); }
+.done-testrail li.skipped { color: var(--muted); }
+
+/* A recording left by a crash, offered on the Cases screen */
+.unsaved { display: grid; gap: 8px; margin: 0 0 14px; }
+.unsaved-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 10px; background: var(--accent-soft); font-size: 13px; }
+.unsaved-row .text { flex: 1; min-width: 220px; }
 
 /* Action bar */
 .actionbar { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); }
@@ -275,7 +287,7 @@ input[type="password"] { font: inherit; padding: 9px 12px; border: 1px solid var
 .run-cases .pill { min-width: 0; }
 #history-run { display: flex; flex-direction: column; gap: 12px; }
 #hr-video { width: 100%; border-radius: 8px; background: #000; max-height: 44vh; }
-.hr-actions { display: flex; gap: 8px; align-items: center; }
+.hr-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .hr-steps { display: flex; flex-direction: column; gap: 2px; }
 .hr-case { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; font-weight: 600; font-size: 13px; }
 .hr-case > span:nth-child(2) { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -285,6 +297,28 @@ input[type="password"] { font: inherit; padding: 9px 12px; border: 1px solid var
 .hr-step.current { background: var(--accent-soft); }
 .hr-step .at { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
 .hr-step .pos { color: var(--muted); font-size: 12px; }
+.hr-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.chip { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: inherit; }
+.chip.error { background: rgba(229, 72, 77, 0.15); color: var(--fail); }
+.chip.warn { background: rgba(217, 119, 6, 0.15); color: var(--blocked); }
+.chip.ok { background: rgba(31, 157, 85, 0.15); color: var(--pass); }
+.chip.muted { color: var(--muted); font-weight: 400; }
+.hr-playing { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+.hr-clips { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.hr-clip { display: grid; grid-template-columns: minmax(70px, auto) 90px minmax(0, 1fr); gap: 8px; align-items: baseline; text-align: left; padding: 6px 10px; font-size: 13px; }
+.hr-clip.failure b { color: var(--fail); }
+.hr-clip .hint { margin: 0; }
+.hr-extras { margin: 0 0 4px 72px; font-size: 12.5px; }
+.hr-extras summary { cursor: pointer; color: var(--muted); padding: 2px 0; }
+.hr-extras.warn summary { color: var(--blocked); }
+.hr-extras.bad summary { color: var(--fail); }
+.hr-extras ul { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; gap: 3px; }
+.hr-extras li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.hr-extras li .text { overflow-wrap: anywhere; }
+.hr-extras li.error .text, .hr-extras li.request .text { color: var(--fail); }
+.hr-extras li.warn .text { color: var(--blocked); }
+.hr-extras li.muted { display: block; color: var(--muted); padding-left: 64px; }
+.hr-extras .at { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 0; text-align: left; }
 
 /* ---- Polish pass: accessibility, scrollbars, small interaction cues ---- */
 

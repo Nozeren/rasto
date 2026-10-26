@@ -25,6 +25,7 @@
   <main>
     <!-- ① Cases -->
     <section class="view" data-view="cases">
+      <div id="unsaved" class="unsaved" hidden></div>
       <div class="split">
         <div class="pane">
           <div class="search">
@@ -119,6 +120,10 @@
             <input id="out-config" type="text" list="recent-configs" placeholder="staging_chrome">
             <label>Folder</label>
             <div class="folder-line"><code id="out-root"></code> <button id="change-root" type="button" class="link">change</button></div>
+            <label for="out-run">TestRail run</label>
+            <input id="out-run" type="text" placeholder="R100 (optional)" spellcheck="false" autocomplete="off">
+            <span></span>
+            <span class="hint run-hint">Once saved, each case's result is posted to this run, with its clip and logs attached.</span>
           </div>
           <div class="file-preview">
             <div class="label">The recording will be saved as</div>
@@ -204,13 +209,19 @@
                 <div id="hr-meta" class="hint"></div>
               </div>
             </div>
+            <div id="hr-evidence" class="hr-evidence"></div>
             <video id="hr-video" controls preload="metadata"></video>
+            <div id="hr-playing" class="hr-playing" hidden></div>
             <div id="hr-missing" class="notice" hidden>The video file is no longer there.</div>
             <div class="hr-actions">
               <button id="hr-show" type="button">Show in folder</button>
               <button id="hr-copy" type="button">Copy path</button>
               <span class="spacer"></span>
               <button id="hr-load" type="button" class="primary">Load these cases</button>
+            </div>
+            <div id="hr-clips-box" hidden>
+              <div class="label">Clips</div>
+              <div id="hr-clips" class="hr-clips"></div>
             </div>
             <div class="label">Steps (click to jump)</div>
             <div id="hr-steps" class="hr-steps"></div>
@@ -228,6 +239,7 @@
         <code id="done-file" class="done-file"></code>
         <div id="done-meta" class="hint"></div>
         <ol id="done-cases" class="queue"></ol>
+        <div id="done-testrail" class="done-testrail" hidden></div>
         <div class="done-actions">
           <button id="show-folder" type="button">Show in folder</button>
           <button id="record-again" type="button">Record the same cases again</button>
@@ -278,6 +290,10 @@
         <div><input id="countdown" type="number" min="0" max="10" step="1"> s <span class="hint">before recording starts (0 = start at once)</span></div>
         <label for="pref-bg">Background</label>
         <label class="check"><input id="pref-bg" type="checkbox"> Include Background steps by default</label>
+        <label for="pref-clips">Clips</label>
+        <label class="check"><input id="pref-clips" type="checkbox"> With several cases, also save a clip per case</label>
+        <label for="failure-clip">Failure clip</label>
+        <div><input id="failure-clip" type="number" min="0" max="300" step="5"> s <span class="hint">before each Fail, saved as its own clip (0 = off)</span></div>
         <label for="pref-remote">Remote control</label>
         <label class="check"><input id="pref-remote" type="checkbox"> Allow scripts and agents on this computer to start and drive recordings <span class="hint">(bin/rasto-remote.js, bin/rasto-mcp.js)</span></label>
       </div>
@@ -287,6 +303,8 @@
       <div class="form">
         <label for="browser-port">Debugging port</label>
         <div><input id="browser-port" type="number" min="1024" max="65535" step="1"> <span class="hint">the browser's --remote-debugging-port</span></div>
+        <label for="pref-input">Clicks and typing</label>
+        <label class="check"><input id="pref-input" type="checkbox"> Show them in tab recordings (a ripple, a label) and list them per step <span class="hint">(passwords masked)</span></label>
         <label for="pref-console">Console</label>
         <label class="check"><input id="pref-console" type="checkbox"> Save the browser's console with each step in the step log</label>
         <label for="pref-network">Network</label>

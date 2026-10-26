@@ -17,7 +17,7 @@ export interface RemoteHandlers {
   windows(): Promise<unknown>;
   /** GET /tabs: the tabs of the browser on the debugging port (recordable headless) */
   tabs(): Promise<unknown>;
-  /** POST /record { feature, window | tab, subject?, config? } */
+  /** POST /record { feature, window | tab, subject?, config?, run? } */
   record(body: Record<string, unknown>): Promise<unknown>;
   /** POST /control { action } */
   control(action: string): Promise<unknown>;

@@ -52,6 +52,6 @@ module.exports = {
   status: () => request('GET', '/status'),
   windows: () => request('GET', '/windows'),
   tabs: () => request('GET', '/tabs'),
-  record: ({ feature, window, tab, subject, config }) => request('POST', '/record', { feature: path.resolve(feature), window, tab, subject, config }),
+  record: ({ feature, window, tab, subject, config, run }) => request('POST', '/record', { feature: path.resolve(feature), window, tab, subject, config, run }),
   control: (action) => request('POST', '/control', { action }),
 };

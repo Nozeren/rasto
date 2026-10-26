@@ -54,12 +54,20 @@ The app walks you through three steps (top bar), then records:
 
    Each result flashes in the video for 2 s and the next case starts; after the last one the recording stops itself.
 5. **Done.** The file name, size and per-case results are shown. **Show in folder** opens the `.mp4` and its `.json`
-   step log. **Record the same cases again** (e.g. in another config) or **New run**.
+   step log (plus the clips folder, see *What a recording leaves*). With a **TestRail run** set in ③, each case's
+   result is then posted to it (see *Posting results to TestRail*); the Done screen lists how each case went, with
+   **Try again** if some failed. **Record the same cases again** (e.g. in another config) or **New run**.
 
 6. **🕘 History** (top right) lists every recording under the parent folder, newest first and grouped by day, with
    the result of each case. Filter by case, subject, config, file or result. Pick one to **play it inside Rasto**;
    click any step to jump the video to that moment. **Load these cases** reloads the run's cases from TestRail (same
    Examples row) into the queue to record them again, e.g. in another config.
+
+   Above the video, the recording's evidence: console errors and warnings, requests and how many failed (**Show .har**
+   opens it), clicks and typing, clips. **Clips** play in the same player (**Back to the whole recording** returns).
+   Under each step, a folded line sums up what happened while it was on screen (`2 errors · 1 of 7 requests failed ·
+   3 click / typings`); unfold it for each console error and warning, failed request and action, with its time: click
+   the time to jump the video there.
 
 **Tips**
 
@@ -126,6 +134,18 @@ recording driven entirely by an agent, start Rasto hidden too: `Rasto --hidden` 
 `connectOverCDP("http://127.0.0.1:9222")`) and Rasto through the remote control below, with `--tab` instead of
 `--window`. Linux still needs a display server for Rasto itself (on a server, run it under `xvfb-run`).
 
+**Clicks and typing.** A tab has no mouse pointer in the video, so with **⚙ Settings → Browser → Clicks and typing**
+(on by default) Rasto shows them: a red ripple where each click lands, and a label above the banner with what was
+clicked or typed (`Click · Sign in`, `Type · Email: bob@example.test`, `Choose · Plan: Team`, `Key · Enter`). Typing in
+one field counts as one action holding its final value. Password fields and fields that look secret (PIN, card number,
+CVC, one-time code, token, API key) always show `••••••`, so not even their length is in the video or the log. The
+actions are also listed per step in the step log (`"actions": [{ "at": "00:01.2", "kind": "click", "text": "Email" }]`)
+and in History.
+
+It works the same for a person or an agent clicking, because it reads the page's own events. It runs in an isolated
+world, like a browser extension: the page's scripts can't see it, and nothing is added to the page's DOM. It follows
+the tab to new pages; input inside iframes isn't shown.
+
 ## Guides
 
 Besides test cases, Rasto records **guides**: how-to videos with numbered steps instead of Given / When / Then. A guide is
@@ -167,17 +187,20 @@ rasto-remote tabs                                       # tabs of the browser on
 rasto-remote record demo.feature --window Chrome --subject my-demo --config default
 rasto-remote record demo.feature --tab localhost:3000   # a tab, by title or URL: no screen, no countdown
 rasto-remote next                                       # next | previous | pause | pass | fail | blocked | done | stop
-rasto-remote status                                     # view, case, step i/n, results, saved file
+rasto-remote record demo.feature --tab localhost:3000 --run R100   # then post the results to TestRail run 100
+rasto-remote status                                     # view, case, step i/n, results, saved file, testrail
 ```
 
 `record` queues every Scenario of the file (every Examples row), or the guide of a `.md` file, and records the first
 window or screen whose title contains `--window` (after the usual countdown), or the first browser tab whose title or URL
 contains `--tab` (at once). `done` ends a guide; `status`
-says which guide card is on screen (`card`), so a script can wait for it before acting. Every command prints Rasto's JSON answer and exits with 1
-when it says `"ok": false`.
+says which guide card is on screen (`card`), so a script can wait for it before acting. With `--run`, `status` has a
+`testrail` object once the video is saved: wait while its `state` is `posting`; it then holds each case's outcome. A
+remote recording only posts when it passes `--run`. Every command prints Rasto's JSON answer and exits with 1 when it
+says `"ok": false`.
 
 **MCP server** (`bin/rasto-mcp.js`, stdio, no dependencies) gives an agent the same as tools: `rasto_windows`,
-`rasto_tabs`, `rasto_record` (`window` or `tab`), `rasto_control`, `rasto_status`.
+`rasto_tabs`, `rasto_record` (`window` or `tab`, optional `run`), `rasto_control`, `rasto_status`.
 
 ```bash
 claude mcp add rasto -- node path/to/rasto/bin/rasto-mcp.js
@@ -218,7 +241,10 @@ granting it, quit and restart the app.
 
 ## How a recording is saved
 
-1. The chosen screen or window is captured at 15 fps into a temporary WebM.
+1. The chosen screen, window or tab is captured at 15 fps into a WebM that is written to disk as it is recorded (a
+   chunk a second, in `unsaved/` in the app's user-data folder), next to a copy of the step log updated every 2 s. A
+   long recording costs no memory, and nothing is lost if Rasto crashes or is killed: on the next start the Cases
+   screen offers to **Save it** (into the folder it was going to, with the step log as it was) or **Discard** it.
 2. On **Stop**, it is compressed with ffmpeg (bundled through `ffmpeg-static`):
 
    | Preset | Max width | fps | H.264 CRF | Used when |
@@ -227,8 +253,9 @@ granting it, quit and restart the app.
    | B | 1280 px | 10 | 32 | only if A is above the size limit (50 MB) |
 
    A real 4.5 min 2560×1440@60fps screen recording went from 87.7 MB to 3.2 MB with preset A.
-3. The MP4 is written to the output folder (see *Running several cases*) and the temporary WebM is deleted. If
-   compression fails, the WebM is kept and its path is shown.
+3. The MP4 is written to the output folder (see *Running several cases*), then a quick copy pass (no re-encoding)
+   adds the steps as **chapters** and as a **subtitle track** (see below), and the clips are cut. The WebM is deleted
+   once everything is saved. If compression fails, the WebM is kept (and offered again on the next start).
 
 ## Steps and hotkeys
 
@@ -285,6 +312,45 @@ Output, set in **Save to** (remembered between runs):
 
 The `.json` step log lists every case with its result and each step with its time in the video (`"at": "01:23.4"`),
 so a reviewer can jump straight to a step.
+
+## What a recording leaves
+
+```
+03_C101-C102-C103_fail.mp4          the video, with the steps as chapters and subtitles
+03_C101-C102-C103_fail.json         the step log (console per step, clips, network summary)
+03_C101-C102-C103_fail.har          the network, when ⚙ Settings → Browser → Network is on
+03_C101-C102-C103_fail/             the clips
+  C101_pass.mp4                     one per case (runs with several cases)
+  C102_fail.mp4
+  C102_fail_last-20s.mp4            the last 20 s before Fail
+  C103_blocked.mp4
+```
+
+**Chapters and subtitles.** Every step is a chapter of the MP4 (`C102 · Step 2/3: When I enter a voucher`; a guide's
+are its numbered steps), so VLC, QuickTime, IINA, mpv and video sites list the steps and jump to them, and the same
+text is a subtitle track (`Steps`) that can be turned on in any player. The file explains itself without Rasto.
+
+**Clips.** With several cases in a run, each case also gets its own MP4, from its first step to its result (the
+2-second result flash included). Every failed case also gets the last seconds before **Fail** as its own clip, the
+part a bug report needs (when the case is longer than that). Clips carry their own step subtitles. Both are set in
+⚙ Settings → Recording: **Clips** (on by default) and **Failure clip** (20 s by default; 0 turns it off). The step log
+lists them under `clips` with where they are in the video. A guide gets no clips.
+
+## Posting results to TestRail
+
+Type the run in **③ Save to → TestRail run** (`R100` or `100`; it is filled in when the cases were loaded from a run).
+Once the video is saved, each case that has a TestRail id (loaded from TestRail, or a `@C<id>` tag) and a result gets a
+result in that run:
+
+- the status (Passed / Failed / Blocked) and the time it took;
+- a comment with the video's name, where the case is in it, every step with its time, the Examples row, and the
+  console errors / warnings and network requests of that case;
+- attachments: the case's clip (or the whole video when the run has one case), its failure clip, the step log and the
+  `.har` (TestRail takes files up to 256 MB).
+
+Cases without an id or without a result are skipped, and an error for one case (e.g. not in that run) doesn't stop the
+others. Leave the field empty to post nothing. It uses the TestRail access in ⚙ Settings; the user needs permission to
+add results to the run.
 
 ## Scopes
 

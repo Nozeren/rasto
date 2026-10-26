@@ -30,6 +30,12 @@ export interface Preferences {
   browserNetwork: boolean;
   /** Keep cookies, credential headers and secret-looking values in the .har instead of redacting them. */
   keepSecrets: boolean;
+  /** Recording a browser tab: show clicks (a ripple) and typing (a label) in the video, and log them per step. */
+  showInput: boolean;
+  /** With several cases, also save a clip per case (clips.ts). */
+  clips: boolean;
+  /** Also save the last N seconds before each Fail as a clip; 0 turns it off. */
+  failureClipSec: number;
   /** The browser's --remote-debugging-port: console, network, and recording a headless browser's tab. */
   browserPort: number;
 }
@@ -68,6 +74,9 @@ export const DEFAULT_SETTINGS: Settings = {
     browserNetwork: false,
     keepSecrets: false,
     browserPort: 9222,
+    showInput: true,
+    clips: true,
+    failureClipSec: 20,
   },
   recent: { subjects: [], configs: [] },
   testrail: { url: '', user: '', apiKeyEncrypted: '' },
