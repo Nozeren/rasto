@@ -1,0 +1,72 @@
+# Builds Rasto for macOS, Windows and Linux. On a version tag (v0.1.0, matching package.json) it publishes them as a
+# GitHub Release; on a pull request that changes this workflow it only builds, to check the builds still work.
+# Each OS builds on its own runner: ffmpeg-static downloads the ffmpeg binary of the OS it is installed on.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: ['.github/workflows/release.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist
+            files: release/*.dmg
+          - os: windows-latest
+            script: dist:win
+            files: release/*.exe
+          - os: ubuntu-latest
+            script: dist:linux
+            files: release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: The tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match package.json ($version)" >&2
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          # Unsigned builds: don't look for a signing identity.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rasto-${{ matrix.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Rasto $GITHUB_REF_NAME" --generate-notes
