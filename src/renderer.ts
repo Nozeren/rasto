@@ -1358,7 +1358,7 @@ async function showSaveResult(result: SaveResult, meta: RecordingMeta | null): P
     $<HTMLElement>('done-file').textContent = result.path.split(/[\\/]/).pop() ?? result.path;
     const clips = result.clips?.length ? ` · ${result.clips.length} clip${result.clips.length === 1 ? '' : 's'} in the folder of the same name` : '';
     $<HTMLDivElement>('done-meta').textContent = meta
-      ? `${formatBytes(result.bytes)} · ${formatDuration(meta.durationMs)} · steps as chapters and subtitles · step log saved next to it${clips}${consoleSummary(meta)}${networkSummary(meta, result.network)} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`
+      ? `${formatBytes(result.bytes)} · ${formatDuration(meta.durationMs)} · steps as chapters and subtitles · step log${result.report ? ' and HTML report' : ''} saved next to it${clips}${consoleSummary(meta)}${networkSummary(meta, result.network)} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`
       : `${formatBytes(result.bytes)} · step log saved next to it${clips} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`;
     settings = (await window.recorder.getSettings()).settings;
   } else {
@@ -1587,6 +1587,7 @@ function selectRun(entry: HistoryEntry): void {
   if (entry.videoExists) video.src = fileUrl(entry.video);
   else video.removeAttribute('src');
   $<HTMLButtonElement>('hr-show').disabled = !entry.videoExists;
+  $<HTMLButtonElement>('hr-report').disabled = !entry.videoExists;
   // A guide's steps come from its .md file, not from TestRail.
   $<HTMLButtonElement>('hr-load').hidden = entry.kind === 'guide';
 
@@ -2154,6 +2155,11 @@ $<HTMLSelectElement>('history-result').addEventListener('change', renderHistoryL
 $<HTMLSelectElement>('history-kind').addEventListener('change', renderHistoryList);
 $<HTMLButtonElement>('history-refresh').addEventListener('click', () => void openHistory());
 $<HTMLButtonElement>('hr-show').addEventListener('click', () => selectedRun && void window.recorder.reveal(selectedRun.video));
+$<HTMLButtonElement>('hr-report').addEventListener('click', async () => {
+  if (!selectedRun) return;
+  const result = await window.recorder.historyReport(selectedRun.log);
+  if (!result.ok) setStatus(`Could not open the report: ${result.error}`, 'error');
+});
 $<HTMLButtonElement>('hr-copy').addEventListener('click', async () => {
   if (!selectedRun) return;
   await window.recorder.copyText(selectedRun.video);

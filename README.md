@@ -22,6 +22,8 @@ happened, with no video editing.**
 - **A step log** next to the video, with each step's time, so a reviewer can jump straight to it. The steps are also
   chapters and subtitles of the MP4.
 - **Clips:** one per case, and the last seconds before every Fail.
+- **A shareable report:** one `.html` per recording with the video inside, every step and what happened during it.
+  Send it to anyone; it opens offline in any browser.
 - **Console and network:** with Chrome or Edge started with a debugging port, the page's console errors go under each
   step and its network into a `.har`, secrets redacted.
 - **Posts the results to TestRail**, with the steps, clips and logs attached.
@@ -121,11 +123,15 @@ The app walks you through three steps (top bar), then records:
    result is then posted to it (see *Posting results to TestRail*); the Done screen lists how each case went, with
    **Try again** if some failed. **Record the same cases again** (e.g. in another config) or **New run**.
 
+   Next to the video, Rasto also writes the **report**: one `.html` file to send to someone without Rasto (see *What a
+   recording leaves*).
+
    ![Done: the saved file, console and network counts, and each case's result](docs/screenshots/done.png)
 
 6. **🕘 History** (top right) lists every recording under the parent folder, newest first and grouped by day, with
    the result of each case. Filter by case, subject, config, file or result. Pick one to **play it inside Rasto**;
-   click any step to jump the video to that moment. **Load these cases** reloads the run's cases from TestRail (same
+   click any step to jump the video to that moment. **Open report** opens its `.html` report (and writes one for
+   recordings made before reports existed). **Load these cases** reloads the run's cases from TestRail (same
    Examples row) into the queue to record them again, e.g. in another config.
 
    Above the video, the recording's evidence: console errors and warnings, requests and how many failed (**Show .har**
@@ -206,6 +212,7 @@ recording has no HUD and no countdown (see *Headless recording*).
 ```
 03_C101-C102-C103_fail.mp4          the video, with the steps as chapters and subtitles
 03_C101-C102-C103_fail.json         the step log (console per step, clips, network summary)
+03_C101-C102-C103_fail.html         the report, to share (below)
 03_C101-C102-C103_fail.har          the network, when ⚙ Settings → Browser → Network is on
 03_C101-C102-C103_fail/             the clips
   C101_pass.mp4                     one per case (runs with several cases)
@@ -217,6 +224,12 @@ recording has no HUD and no countdown (see *Headless recording*).
 **Chapters and subtitles.** Every step is a chapter of the MP4 (`C102 · Step 2/3: When I enter a voucher`; a guide's
 are its numbered steps), so VLC, QuickTime, IINA, mpv and video sites list the steps and jump to them, and the same
 text is a subtitle track (`Steps`) that can be turned on in any player. The file explains itself without Rasto.
+
+**Report.** The `.html` is self-contained: send it by chat or email and it opens offline in any browser. It has the
+video (embedded up to 25 MB; a longer one plays from the `.mp4` next to it, so send both), each case with its result,
+and every step with its time: click a time to jump the video there. Under each step: the clicks and typing, the console
+errors and warnings and the failed requests while it was on screen. It shows only what the step log and the `.har`
+hold, so secrets stay masked, and text from the page under test can't run in it.
 
 **Clips.** With several cases in a run, each case also gets its own MP4, from its first step to its result (the
 2-second result flash included). Every failed case also gets the last seconds before **Fail** as its own clip, the

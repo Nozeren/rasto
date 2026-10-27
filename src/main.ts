@@ -11,6 +11,7 @@ import { RawRequest, startBrowserCapture, stopBrowserCapture } from './capture';
 import { listTabs } from './devtools';
 import { addStepTracks, planClips, saveClips } from './clips';
 import { buildHar } from './har';
+import { writeReport } from './htmlreport';
 import { Feature, hasGherkinStructure, parseGherkin } from './gherkin';
 import { parseGuide } from './guide';
 import { baseName, guideToken, isGuideRun, listHistory, NetworkSummary, nextSeq, outputFolder, readHarRequests, RecordingMeta, writeChapters, writeStepLog } from './output';
@@ -229,6 +230,10 @@ async function saveRecording(webm: string, meta: RecordingMeta, output: OutputSe
 
     const log = path.join(folder, `${base}.json`);
     await writeStepLog(log, video, output, meta, { network, clips });
+    const report = await writeReport(log).catch((error: Error) => {
+      console.error(`[save] report: ${error.message}`);
+      return undefined;
+    });
     if (isGuideRun(meta.cases)) {
       await writeChapters(path.join(folder, `${base}.md`), meta).catch((error: Error) => console.error(`[save] chapters: ${error.message}`));
     }
@@ -238,7 +243,7 @@ async function saveRecording(webm: string, meta: RecordingMeta, output: OutputSe
     };
     await saveSettings(settings);
     lastSaved = { video, log, har, clips, meta, subject: output.subject, config: output.config, network };
-    return { ok: true, ...result, log, network, clips };
+    return { ok: true, ...result, log, network, clips, report };
   } catch (error) {
     // Keep the raw capture so nothing is lost; tell the user where it is.
     return { ok: false, error: (error as Error).message, raw: webm };
@@ -357,6 +362,22 @@ ipcMain.handle('history-network', async (_event, har: string) => {
   if (!file.endsWith('.har') || !file.startsWith(root + path.sep)) return { ok: false, error: 'Not a recording in the parent folder' };
   try {
     return { ok: true, requests: await readHarRequests(file) };
+  } catch (error) {
+    return failure(error);
+  }
+});
+
+/** Opens a recording's HTML report, writing it first for a recording made before reports existed (or without one). */
+ipcMain.handle('history-report', async (_event, log: string) => {
+  const root = path.resolve(settings.output.root);
+  const file = path.resolve(log);
+  if (!file.endsWith('.json') || !file.startsWith(root + path.sep)) return { ok: false, error: 'Not a recording in the parent folder' };
+  try {
+    const report = file.replace(/\.json$/, '.html');
+    const fresh = await fs.stat(report).then((r) => fs.stat(file).then((l) => r.mtimeMs >= l.mtimeMs)).catch(() => false);
+    if (!fresh) await writeReport(file);
+    const error = await shell.openPath(report);
+    return error ? { ok: false, error } : { ok: true, report };
   } catch (error) {
     return failure(error);
   }
