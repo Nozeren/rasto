@@ -39,7 +39,8 @@ Test cases are written in [Gherkin](https://cucumber.io/docs/gherkin/reference/)
 
 ## Install
 
-The builds are not signed, so each OS warns once on first launch.
+Download the build for your OS from [Releases](https://github.com/Nozeren/rasto/releases), or build it yourself with
+the command under each OS. The builds are not signed, so each OS warns once on first launch.
 
 **macOS**
 
@@ -411,6 +412,17 @@ and quits. `RASTO_SNAPSHOT_JS='…'` runs script in the page first (e.g. load a 
 check layout changes.
 
 `npm run icon` re-renders `build/icon.png` from `build/icon.svg`.
+
+**CI and releases.** Every pull request is typechecked and built (`.github/workflows/ci.yml`). To publish a release,
+set the version in `package.json`, commit, and push a tag that matches it:
+
+```bash
+npm version 0.2.0 -m "Rasto %s"   # updates package.json, commits and tags v0.2.0
+git push --follow-tags
+```
+
+`.github/workflows/release.yml` then builds the macOS `.dmg`, the Windows installer and the Linux AppImage on their own
+runners and publishes them as a GitHub Release with generated notes.
 
 `npm run screenshots` regenerates the README images (`docs/screenshots/*.png` and `docs/demo.gif`): it records a real
 run of a demo shop in a headless Chrome (set `CHROME_PATH` if it isn't found) with a throwaway profile, so nothing of
