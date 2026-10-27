@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Rasto: record manual test runs with the current Gherkin step burned into the video.",
   "private": true,
+  "license": "MIT",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

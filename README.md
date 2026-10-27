@@ -420,3 +420,7 @@ check layout changes.
 | 2 | Burned-in step banner + hotkeys (next / previous / pause), configurable | done |
 | 3 | Case sources: paste, `.feature` files (Examples row picker), TestRail case / run | done |
 | 4 | Queue of cases, Pass / Fail / Blocked per case, subject/config folders, naming, step log | done |
+
+## License
+
+[MIT](LICENSE)
