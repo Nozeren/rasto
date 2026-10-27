@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Rasto: a recording dot leaving a trail ("rasto"). macOS icon grid: 824 px body with a soft shadow. -->
+  <!-- Rasto: a trail through passed checkpoints (the steps) to the recording dot. macOS icon grid: 824 px body with a soft shadow. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#2b2f3a"/>
@@ -22,13 +22,18 @@
   <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)" filter="url(#shadow)"/>
   <rect x="100.5" y="100.5" width="823" height="823" rx="185.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
 
-  <!-- The trail: fading steps leading to the dot. -->
-  <circle cx="248" cy="742" r="22" fill="#ff3b30" fill-opacity="0.22"/>
-  <circle cx="338" cy="690" r="30" fill="#ff3b30" fill-opacity="0.38"/>
-  <circle cx="440" cy="626" r="40" fill="#ff3b30" fill-opacity="0.6"/>
+  <!-- The trail. -->
+  <path d="M228 792 C384 792, 306 597, 461 597 S539 423, 656 403" fill="none" stroke="#ffffff" stroke-opacity="0.55"
+        stroke-width="23" stroke-linecap="round" stroke-dasharray="4 50"/>
+
+  <!-- Checkpoints: the steps passed on the way. -->
+  <circle cx="228" cy="792" r="47" fill="#ffffff"/>
+  <circle cx="461" cy="597" r="47" fill="#ffffff"/>
+  <path d="M207 792 l16 16 l29 -31 M440 597 l16 16 l29 -31" fill="none" stroke="#2b2f3a" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- The recording dot. -->
-  <circle cx="626" cy="452" r="152" fill="#ff3b30" fill-opacity="0.25" filter="url(#glow)"/>
-  <circle cx="626" cy="452" r="132" fill="url(#dot)"/>
-  <circle cx="626" cy="452" r="132" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="14"/>
+  <circle cx="675" cy="395" r="140" fill="#ff3b30" fill-opacity="0.25" filter="url(#glow)"/>
+  <circle cx="675" cy="395" r="120" fill="url(#dot)"/>
+  <circle cx="675" cy="395" r="120" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="14"/>
 </svg>
