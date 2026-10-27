@@ -87,6 +87,8 @@ export async function listUnsaved(): Promise<UnsavedInfo[]> {
       const snapshot = JSON.parse(await fs.readFile(snapshotPath(id), 'utf-8')) as Snapshot;
       const { size } = await fs.stat(webmPath(id));
       if (size > 0) found.push({ id, webm: webmPath(id), bytes: size, meta: snapshot.meta, output: snapshot.output });
+      // Nothing was recorded (the source gave no picture): nothing to save.
+      else await discardUnsaved(id);
     } catch {
       // No step log yet (it crashed in the first seconds) or unreadable: nothing worth offering.
     }

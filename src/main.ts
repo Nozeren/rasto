@@ -273,6 +273,10 @@ async function saveRecording(webm: string, meta: RecordingMeta, output: OutputSe
 // Recording in progress: the capture goes to disk as it comes (unsaved.ts).
 ipcMain.handle('capture-begin', async () => beginCapture(settings.output));
 ipcMain.on('capture-chunk', (_event, data: ArrayBuffer) => appendChunk(data));
+ipcMain.handle('capture-abort', async () => {
+  const capture = await endCapture();
+  if (capture) await discardUnsaved(capture.id);
+});
 ipcMain.on('capture-snapshot', (_event, meta: RecordingMeta) => {
   writeSnapshot(meta).catch((error: Error) => console.error(`[unsaved] snapshot: ${error.message}`));
 });
