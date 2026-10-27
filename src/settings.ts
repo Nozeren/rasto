@@ -36,6 +36,8 @@ export interface Preferences {
   clips: boolean;
   /** Also save the last N seconds before each Fail as a clip; 0 turns it off. */
   failureClipSec: number;
+  /** The bottom corner of the step label in the video; a tab recording moves it out of the way of clicks. */
+  labelCorner: 'left' | 'right';
   /** The browser's --remote-debugging-port: console, network, and recording a headless browser's tab. */
   browserPort: number;
 }
@@ -77,6 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
     showInput: true,
     clips: true,
     failureClipSec: 20,
+    labelCorner: 'left',
   },
   recent: { subjects: [], configs: [] },
   testrail: { url: '', user: '', apiKeyEncrypted: '' },

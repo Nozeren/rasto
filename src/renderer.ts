@@ -58,6 +58,9 @@ const RESULT_STYLE: Record<CaseResult, { label: string; color: string }> = {
   blocked: { label: 'BLOCKED', color: '#d97706' },
 };
 
+/** The step card's colour for a result: darker than RESULT_STYLE, so its white text stays readable. */
+const CARD_RESULT_COLORS: Record<CaseResult, string> = { pass: '#15803d', fail: '#b91c1c', blocked: '#b45309' };
+
 const BANNER_KEYWORD_COLORS: Record<string, string> = {
   Given: '#60a5fa',
   When: '#fbbf24',
@@ -96,6 +99,10 @@ let tabViewport = { width: 0, height: 0 };
 /** Clicks being drawn as ripples, and the label of the last click or typing (screencast.ts inputTracker). */
 let inputRipples: { x: number; y: number; at: number }[] = [];
 let inputLabel: { text: string; until: number } | null = null;
+/** The step card's bottom corner: the setting, until a click lands under the card and it moves to the other one. */
+let cardCorner: 'left' | 'right' | null = null;
+/** Where the card was last drawn, in canvas pixels, to know when a click lands under it. */
+let cardRect = { x: 0, y: 0, w: 0, h: 0 };
 const RIPPLE_MS = 700;
 const INPUT_LABEL_MS = 1800;
 let drawHandle: number | undefined;
@@ -116,7 +123,8 @@ let activeMs = 0;
 let segmentStart = 0;
 let runStartedAt = '';
 let finishing = false;
-let flash: { text: string; color: string; until: number } | null = null;
+/** A case's result, shown for FLASH_MS on the step card (and the HUD): with the step it happened on and what comes next. */
+let flash: { text: string; color: string; until: number; result?: CaseResult; label?: string; step?: { keyword: string; text: string }; at?: string; trailer?: string } | null = null;
 /** A guide's title card and part cards, one after another over the whole frame (see showCards). */
 interface GuideCard {
   kicker: string;
@@ -619,7 +627,10 @@ function inputText(event: InputEvent): string {
 window.recorder.onInput((event) => {
   if (!tabStreaming) return;
   const now = Date.now();
-  if (event.kind === 'click' && event.x !== undefined && event.y !== undefined) inputRipples.push({ x: event.x, y: event.y, at: now });
+  if (event.kind === 'click' && event.x !== undefined && event.y !== undefined) {
+    inputRipples.push({ x: event.x, y: event.y, at: now });
+    dodgeCard(event.x, event.y);
+  }
   inputLabel = { text: inputText(event), until: now + INPUT_LABEL_MS };
   if (!isRecording()) return;
   const step = loggedCases[loggedCases.length - 1]?.steps.at(-1);
@@ -633,6 +644,16 @@ window.recorder.onInput((event) => {
   }
   actions.push({ kind: event.kind, text: event.text, ...(event.value !== undefined ? { value: event.value } : {}), atMs: elapsedMs() });
 });
+
+/** A click (viewport px) under the step card, or just around it, moves the card to the other bottom corner. */
+function dodgeCard(x: number, y: number): void {
+  if (!tabViewport.width || !cardRect.w) return;
+  const cx = (x * canvasEl.width) / tabViewport.width;
+  const cy = (y * canvasEl.height) / tabViewport.height;
+  const margin = (canvasEl.height / 540) * 24;
+  const under = cx > cardRect.x - margin && cx < cardRect.x + cardRect.w + margin && cy > cardRect.y - margin && cy < cardRect.y + cardRect.h + margin;
+  if (under) cardCorner = (cardCorner ?? settings?.preferences.labelCorner ?? 'left') === 'left' ? 'right' : 'left';
+}
 
 /** Ripples where the tab was clicked (under the banner). */
 function drawRipples(width: number, height: number): void {
@@ -658,27 +679,6 @@ function drawRipples(width: number, height: number): void {
       ctx.fill();
     }
   }
-}
-
-/** What was last clicked or typed, in a pill just above the banner. */
-function drawInputLabel(width: number, height: number): void {
-  if (!inputLabel || Date.now() > inputLabel.until || currentCard()) return;
-  const barHeight = Math.max(36, Math.round(height * 0.055));
-  const font = Math.round(barHeight * 0.4);
-  const pad = Math.round(barHeight * 0.3);
-  ctx.font = `600 ${font}px ${BANNER_FONT}`;
-  ctx.textBaseline = 'middle';
-  const text = fitText(inputLabel.text, width * 0.6);
-  const pillWidth = ctx.measureText(text).width + 2 * pad;
-  const pillHeight = Math.round(font * 1.9);
-  const x = pad;
-  const y = height - barHeight - pad - pillHeight;
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-  ctx.beginPath();
-  ctx.roundRect(x, y, pillWidth, pillHeight, pillHeight / 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(text, x + pad, y + pillHeight / 2);
 }
 
 /** Streams a browser tab's frames (screencast.ts) and sizes the video to the first one. */
@@ -946,38 +946,145 @@ function drawBanner(width: number, height: number): void {
     return;
   }
 
-  if (flash && Date.now() < flash.until) {
-    ctx.fillStyle = flash.color;
-    ctx.fillRect(0, y, width, barHeight);
-    ctx.font = `700 ${font}px ${BANNER_FONT}`;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(fitText(flash.text, width - 2 * pad), pad, mid);
-    return;
-  }
-
-  if (c.guide) {
+  if (c.guide && !(flash && Date.now() < flash.until)) {
     drawGuideBanner(c, index, y, width, barHeight);
     return;
   }
+  drawStepCard(width, height, c, index);
+}
 
-  ctx.fillStyle = BANNER_BACKGROUND;
-  ctx.fillRect(0, y, width, barHeight);
+const CARD_MONO = 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace';
 
-  ctx.font = `600 ${font}px ${BANNER_FONT}`;
+/** "2/3", or "Background 1/2" for a Background step. */
+function shortPosition(c: ActiveCase, index: number): string {
   const { section, position, total } = stepPosition(c, index);
-  const tag = `${c.label} · ${section} ${position}/${total}`;
-  ctx.fillStyle = '#94a3b8';
-  ctx.fillText(tag, pad, mid);
-  let x = pad + ctx.measureText(tag).width + pad;
+  return section === 'Step' ? `${position}/${total}` : `${section} ${position}/${total}`;
+}
 
-  ctx.font = `700 ${font}px ${BANNER_FONT}`;
-  ctx.fillStyle = BANNER_KEYWORD_COLORS[step.keyword] ?? '#e2e8f0';
-  ctx.fillText(step.keyword, x, mid);
-  x += ctx.measureText(`${step.keyword} `).width;
+/**
+ * The step card, in a bottom corner. Two lines: the case, its progress (one segment per step), the step number and the
+ * last click or typing; then the step itself, big. On a result the card takes the result's colour and keeps the step it
+ * happened on. Sized from the video's height (designed at 540 px), so it reads the same on any recording.
+ */
+function drawStepCard(width: number, height: number, c: ActiveCase, index: number): void {
+  const s = height / 540;
+  const pad = 12 * s;
+  const margin = 16 * s;
+  const small = Math.round(11 * s);
+  const big = Math.round(18 * s);
+  const gap = 5 * s;
+  const maxWidth = width * 0.46;
+  const result = flash && Date.now() < flash.until && flash.result ? flash : null;
+  const step = result?.step ?? c.steps[index];
+  const now = Date.now();
+  const action = !result && tabStreaming && inputLabel && now < inputLabel.until ? inputLabel.text : '';
 
-  ctx.font = `500 ${font}px ${BANNER_FONT}`;
-  ctx.fillStyle = '#f8fafc';
-  ctx.fillText(fitText(step.text, width - x - pad), x, mid);
+  // Line 1, measured first: [case] [progress | RESULT badge] [2/3 | at 3/3] [last action | next / end of run]
+  ctx.textBaseline = 'middle';
+  ctx.font = `700 ${small}px ${CARD_MONO}`;
+  const label = result?.label ?? c.label;
+  const labelWidth = ctx.measureText(label).width;
+  const segmentsWidth = 64 * s;
+  ctx.font = `800 ${small}px ${BANNER_FONT}`;
+  const badgeText = result ? RESULT_STYLE[result.result as CaseResult].label : '';
+  const badgeWidth = result ? ctx.measureText(badgeText).width + 10 * s : 0;
+  ctx.font = `600 ${small}px ${BANNER_FONT}`;
+  const position = result ? `at ${result.at}` : shortPosition(c, index);
+  const positionWidth = ctx.measureText(position).width;
+  const extra = result ? result.trailer ?? '' : action;
+  const fixed = labelWidth + (result ? badgeWidth : segmentsWidth) + positionWidth + 3 * 8 * s;
+
+  // Line 2: the step.
+  ctx.font = `700 ${big}px ${BANNER_FONT}`;
+  const keywordWidth = ctx.measureText(`${step.keyword} `).width;
+  const fullTextWidth = ctx.measureText(step.text).width;
+  ctx.font = `400 ${small}px ${BANNER_FONT}`;
+  const extraWidth = extra ? Math.min(ctx.measureText(extra).width + 10 * s + (result ? 0 : 14 * s), maxWidth) : 0;
+
+  // A little slack: sized to exactly the text, rounding could make the text "not fit" and get cut.
+  const cardWidth = Math.min(maxWidth, Math.ceil(Math.max(fixed + extraWidth, keywordWidth + fullTextWidth) + 2 * pad + 2 * s));
+  const cardHeight = 2 * pad + small * 1.3 + gap + big * 1.25;
+  const corner = cardCorner ?? settings?.preferences.labelCorner ?? 'left';
+  const x0 = corner === 'left' ? margin : width - cardWidth - margin;
+  const y0 = height - margin - cardHeight;
+  cardRect = { x: x0, y: y0, w: cardWidth, h: cardHeight };
+
+  ctx.fillStyle = result ? CARD_RESULT_COLORS[result.result as CaseResult] : 'rgba(15, 23, 42, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(x0, y0, cardWidth, cardHeight, 10 * s);
+  ctx.fill();
+
+  const mid1 = y0 + pad + (small * 1.3) / 2;
+  let x = x0 + pad;
+  ctx.font = `700 ${small}px ${CARD_MONO}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, x, mid1);
+  x += labelWidth + 8 * s;
+
+  if (result) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(x, mid1 - small * 0.75, badgeWidth, small * 1.5, 4 * s);
+    ctx.fill();
+    ctx.font = `800 ${small}px ${BANNER_FONT}`;
+    ctx.fillStyle = CARD_RESULT_COLORS[result.result as CaseResult];
+    ctx.fillText(badgeText, x + 5 * s, mid1);
+    x += badgeWidth + 8 * s;
+  } else {
+    // One segment per step (done, now, next); a long case gets one bar that fills up.
+    const count = c.steps.length;
+    const h = 3 * s;
+    if (count <= 16) {
+      const each = (segmentsWidth - (count - 1) * 3 * s) / count;
+      for (let i = 0; i < count; i++) {
+        ctx.fillStyle = i < index ? '#64748b' : i === index ? '#ffffff' : '#334155';
+        ctx.beginPath();
+        ctx.roundRect(x + i * (each + 3 * s), mid1 - h / 2, each, h, h / 2);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.roundRect(x, mid1 - h / 2, segmentsWidth, h, h / 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(x, mid1 - h / 2, (segmentsWidth * (index + 1)) / count, h, h / 2);
+      ctx.fill();
+    }
+    x += segmentsWidth + 8 * s;
+  }
+
+  ctx.font = `600 ${small}px ${BANNER_FONT}`;
+  ctx.fillStyle = result ? '#fee2e2' : '#cbd5e1';
+  ctx.fillText(position, x, mid1);
+  x += positionWidth + 10 * s;
+
+  if (extra) {
+    ctx.font = `${result ? 400 : 500} ${small}px ${BANNER_FONT}`;
+    ctx.fillStyle = result ? '#fee2e2' : '#fca5a5';
+    if (!result) {
+      // A small pointer before the last click or typing.
+      ctx.beginPath();
+      ctx.moveTo(x, mid1 - 5 * s);
+      ctx.lineTo(x + 7 * s, mid1 + 1 * s);
+      ctx.lineTo(x + 3.5 * s, mid1 + 1.5 * s);
+      ctx.lineTo(x + 2 * s, mid1 + 5 * s);
+      ctx.closePath();
+      ctx.fill();
+      x += 12 * s;
+    }
+    ctx.fillText(fitText(extra, x0 + cardWidth - pad - x), x, mid1);
+  }
+
+  const mid2 = y0 + pad + small * 1.3 + gap + (big * 1.25) / 2;
+  x = x0 + pad;
+  ctx.font = `700 ${big}px ${BANNER_FONT}`;
+  ctx.fillStyle = result ? 'rgba(255, 255, 255, 0.8)' : BANNER_KEYWORD_COLORS[step.keyword] ?? '#e2e8f0';
+  ctx.fillText(step.keyword, x, mid2);
+  x += keywordWidth;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(fitText(step.text, x0 + cardWidth - pad - x), x, mid2);
 }
 
 function drawFrame(): void {
@@ -990,7 +1097,6 @@ function drawFrame(): void {
     ctx.drawImage(sourceVideo, 0, 0, canvasEl.width, canvasEl.height);
   }
   drawBanner(canvasEl.width, canvasEl.height);
-  if (tabStreaming) drawInputLabel(canvasEl.width, canvasEl.height);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1136,6 +1242,7 @@ async function startRecording(): Promise<void> {
   loggedCases = [];
   finishing = false;
   flash = null;
+  cardCorner = null;
   paused = false;
   activeMs = 0;
   segmentStart = Date.now();
@@ -1256,10 +1363,22 @@ function recordResult(result: CaseResult): void {
   }
 
   const next = runCases[runIndex + 1];
+  const step = activeCase.steps[stepIndex];
+  const done = loggedCases.filter((c) => c.result);
+  const tally = (['pass', 'fail', 'blocked'] as const)
+    .map((r) => [done.filter((c) => c.result === r).length, { pass: 'passed', fail: 'failed', blocked: 'blocked' }[r]] as const)
+    .filter(([n]) => n)
+    .map(([n, word]) => `${n} ${word}`)
+    .join(', ');
   flash = {
     text: `${activeCase.label} — ${RESULT_STYLE[result].label}${next ? `  →  next: ${next.label}` : '  ·  end of run'}`,
     color: RESULT_STYLE[result].color,
     until: Date.now() + FLASH_MS,
+    result,
+    label: activeCase.label,
+    step: step ? { keyword: step.keyword, text: step.text } : undefined,
+    at: shortPosition(activeCase, stepIndex),
+    trailer: next ? `next: ${next.label}` : `end of run · ${tally}`,
   };
 
   if (next) {
@@ -2014,6 +2133,7 @@ async function openSettings(): Promise<void> {
   $<HTMLInputElement>('max-mb').value = String(settings.preferences.maxMb);
   $<HTMLInputElement>('pref-bg').checked = settings.preferences.includeBackground;
   $<HTMLInputElement>('countdown').value = String(settings.preferences.countdownSec);
+  $<HTMLSelectElement>('label-corner').value = settings.preferences.labelCorner;
   $<HTMLInputElement>('pref-remote').checked = settings.preferences.remoteControl;
   $<HTMLInputElement>('pref-console').checked = settings.preferences.browserConsole;
   $<HTMLInputElement>('pref-network').checked = settings.preferences.browserNetwork;
@@ -2175,6 +2295,10 @@ $<HTMLInputElement>('countdown').addEventListener('change', async (event) => {
   const value = Math.max(0, Math.min(10, Math.round(Number((event.target as HTMLInputElement).value) || 0)));
   (event.target as HTMLInputElement).value = String(value);
   settings = await window.recorder.setPreferences({ countdownSec: value });
+});
+$<HTMLSelectElement>('label-corner').addEventListener('change', async (event) => {
+  const value = (event.target as HTMLSelectElement).value === 'right' ? 'right' : 'left';
+  settings = await window.recorder.setPreferences({ labelCorner: value });
 });
 $<HTMLInputElement>('pref-bg').addEventListener('change', async (event) => {
   settings = await window.recorder.setPreferences({ includeBackground: (event.target as HTMLInputElement).checked });

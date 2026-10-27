@@ -62,6 +62,7 @@ interface Preferences {
   clips: boolean;
   failureClipSec: number;
   showInput: boolean;
+  labelCorner: 'left' | 'right';
 }
 
 interface AppSettings {
