@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('recorder', {
   reveal: (filePath: string) => ipcRenderer.invoke('reveal', filePath),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyNetwork: (har: string) => ipcRenderer.invoke('history-network', har),
+  historyReport: (log: string) => ipcRenderer.invoke('history-report', log),
   copyText: (text: string) => ipcRenderer.invoke('copy-text', text),
   screenAccess: () => ipcRenderer.invoke('screen-access'),
   parseSteps: (text: string) => ipcRenderer.invoke('parse-steps', text),

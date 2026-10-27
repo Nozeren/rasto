@@ -11,7 +11,7 @@ interface CaptureSource {
 }
 
 type SaveResult =
-  | { ok: true; path: string; bytes: number; preset: string; log: string; network?: { har: string; requests: number; failed: number }; clips?: SavedClip[] }
+  | { ok: true; path: string; bytes: number; preset: string; log: string; network?: { har: string; requests: number; failed: number }; clips?: SavedClip[]; report?: string }
   | { ok: false; error: string; raw: string };
 
 /** A clip saved next to the recording (clips.ts). */
@@ -259,6 +259,7 @@ interface HistoryRequest {
 interface RecorderApi {
   historyList(): Promise<HistoryEntry[]>;
   historyNetwork(har: string): Promise<{ ok: true; requests: HistoryRequest[] } | Failure>;
+  historyReport(log: string): Promise<{ ok: true; report: string } | Failure>;
   copyText(text: string): Promise<void>;
   getTestRail(): Promise<TestRailInfo>;
   setTestRail(input: { url: string; user: string; apiKey?: string }): Promise<TestRailSaveResult>;
