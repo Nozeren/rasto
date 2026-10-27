@@ -84,4 +84,26 @@
     ['pause', 'pause'], ['stop', 'stop'], ['show-main', 'show-main'],
   ];
   actions.forEach(([id, action]) => byId<HTMLButtonElement>(id).addEventListener('click', () => window.recorder.hudAction(action)));
+
+  // The note box: main grows the HUD by a row and focuses it; Enter sends the note, Esc (or leaving it) cancels.
+  const form = byId<HTMLFormElement>('note-form');
+  const input = byId<HTMLInputElement>('note-text');
+  const closeNote = (text: string | null) => {
+    if (form.hidden) return;
+    form.hidden = true;
+    input.value = '';
+    window.recorder.hudNote(text);
+  };
+  byId<HTMLButtonElement>('note').addEventListener('click', () => window.recorder.noteOpen());
+  window.recorder.onHudNoteOpen(() => {
+    form.hidden = false;
+    input.focus();
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    closeNote(input.value.trim() || null);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeNote(null);
+  });
 })();

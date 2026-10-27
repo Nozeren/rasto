@@ -28,6 +28,8 @@ export interface LoggedStep {
   console?: LoggedConsoleEntry[];
   /** What was clicked and typed while this step was on screen (a recorded browser tab, screencast.ts). */
   actions?: LoggedAction[];
+  /** Notes the tester (hotkey, HUD) or a script / agent (remote control) added while this step was on screen. */
+  notes?: { text: string; atMs: number }[];
 }
 
 export interface LoggedAction {
@@ -188,6 +190,7 @@ export async function writeStepLog(
         ...(s.actions?.length
           ? { actions: s.actions.map((a) => ({ at: formatTime(a.atMs), kind: a.kind, text: a.text, ...(a.value !== undefined ? { value: a.value } : {}) })) }
           : {}),
+        ...(s.notes?.length ? { notes: s.notes.map((n) => ({ at: formatTime(n.atMs), text: n.text })) } : {}),
       })),
     })),
   };
@@ -251,6 +254,7 @@ export interface HistoryStep {
   text: string;
   console?: { at: string; level: string; text: string; source?: string; paused?: boolean }[];
   actions?: { at: string; kind: string; text: string; value?: string }[];
+  notes?: { at: string; text: string }[];
 }
 
 export interface HistoryRequest {

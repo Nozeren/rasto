@@ -42,7 +42,7 @@ interface TestRailCaseOutcome {
 
 type TestRailPostResult = { ok: true; run: number; cases: TestRailCaseOutcome[] } | { ok: false; error: string };
 
-type HotkeyAction = 'next' | 'previous' | 'pause' | 'pass' | 'fail' | 'blocked';
+type HotkeyAction = 'next' | 'previous' | 'pause' | 'pass' | 'fail' | 'blocked' | 'note';
 
 interface OutputSettings {
   root: string;
@@ -90,6 +90,7 @@ interface LoggedStep {
   atMs: number;
   console?: LoggedConsoleEntry[];
   actions?: LoggedAction[];
+  notes?: { text: string; atMs: number }[];
 }
 
 /** A browser console entry (console.ts), as main sends it and as the step log keeps it. */
@@ -246,6 +247,7 @@ interface HistoryStep {
   text: string;
   console?: { at: string; level: string; text: string; source?: string; paused?: boolean }[];
   actions?: { at: string; kind: string; text: string; value?: string }[];
+  notes?: { at: string; text: string }[];
 }
 
 interface HistoryRequest {
@@ -269,6 +271,13 @@ interface RecorderApi {
   hudClose(): Promise<void>;
   hudState(state: HudState): void;
   hudAction(action: HudAction): void;
+  /** Opens the note box: in the HUD when it is open, else in the main window. */
+  noteOpen(): void;
+  /** The HUD's note box was sent (text) or cancelled (null). */
+  hudNote(text: string | null): void;
+  onHudNoteOpen(callback: () => void): void;
+  onNoteFocus(callback: () => void): void;
+  onNoteAdd(callback: (text: string) => void): void;
   onHudState(callback: (state: HudState) => void): void;
   parseSteps(text: string): Promise<ParseResult>;
   openFeature(): Promise<OpenFeatureResult>;
@@ -309,7 +318,7 @@ interface RecorderApi {
 /** A remote-control request from main (remote.ts): record, control or status. */
 interface RemoteRequest {
   id: number;
-  command: 'record' | 'control' | 'status';
+  command: 'record' | 'control' | 'status' | 'note';
   args: Record<string, unknown>;
 }
 

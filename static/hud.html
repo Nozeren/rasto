@@ -25,9 +25,13 @@
     <button id="fail" type="button" class="result fail">✗ Fail</button>
     <button id="blocked" type="button" class="result blocked">⊘ Blocked</button>
     <span class="grow"></span>
+    <button id="note" type="button" title="Add a note to this step">✎</button>
     <button id="pause" type="button" title="Pause">Ⅱ</button>
     <button id="stop" type="button" class="stop" title="Stop recording">■</button>
   </div>
+  <form id="note-form" class="row note" hidden>
+    <input id="note-text" type="text" maxlength="500" placeholder="Note for this step: Enter to add, Esc to cancel" autocomplete="off">
+  </form>
   <script src="../dist/hud.js"></script>
 </body>
 </html>

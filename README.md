@@ -16,6 +16,7 @@ happened, with no video editing.**
 
 - **Records your manual test** (a window, a screen or a browser tab) with the current Gherkin step burned into the
   video, and saves a small, case-named MP4.
+- **Notes** on the step on screen, from a hotkey or from an agent: in the video, the step log, the report and TestRail.
 - **Pass / Fail / Blocked with one hotkey.** Queue several cases and record them in one go; each result flashes in the
   video and the next case starts.
 - **Cases from anywhere:** a TestRail case or run, a `.feature` file, or pasted steps.
@@ -117,6 +118,7 @@ The app walks you through three steps (top bar), then records:
    | Next / previous step | ⌃⌥→ / ⌃⌥← | Ctrl+Alt+Right / Left |
    | Pause / resume (paused time isn't recorded) | ⌃⌥P | Ctrl+Alt+P |
    | Close the case: Pass / Fail / Blocked | ⌃⌥1 / ⌃⌥2 / ⌃⌥3 | Ctrl+Alt+1 / 2 / 3 |
+   | Add a note to the step on screen | ⌃⌥N | Ctrl+Alt+N |
 
    Each result flashes in the video for 2 s and the next case starts; after the last one the recording stops itself.
 5. **Done.** The file name, size and per-case results are shown. **Show in folder** opens the `.mp4` and its `.json`
@@ -205,6 +207,12 @@ resolution:
 
 On **Pass / Fail / Blocked** the card turns green, red or amber for 2 s and keeps the step it happened on (`FAILED at
 3/3 · Then I see the order confirmation`), with what comes next (`next: C102` or `end of run · 1 passed, 1 failed`).
+**Notes.** ⌃⌥N / Ctrl+Alt+N (or ✎ on the HUD, or the box under the step list) adds a note to the step on screen:
+"button misaligned", "retried, it worked the second time". The HUD grows a text box (Enter adds, Esc cancels); click
+back into the browser afterwards. A note shows above the step label for 4 s and is kept under its step in the step log
+(`"notes": [{ "at": "00:12.3", "text": "…" }]`), in History, the HTML report and the TestRail comment. Scripts and
+agents add them through remote control (`rasto-remote note`, MCP `rasto_note`).
+
 **⚙ Settings → Step label** picks its corner (bottom left or right); in a tab recording, a click that lands under the
 card moves it to the other corner, so it doesn't hide what's being used. A guide keeps its own bar (see *Guides*). The
 step list in the app highlights the current step; clicking a step jumps to it.
@@ -397,6 +405,7 @@ rasto-remote tabs                                       # tabs of the browser on
 rasto-remote record demo.feature --window Chrome --subject my-demo --config default
 rasto-remote record demo.feature --tab localhost:3000   # a tab, by title or URL: no screen, no countdown
 rasto-remote next                                       # next | previous | pause | pass | fail | blocked | done | stop
+rasto-remote note "Checking the total is 27.00"         # a note on the step on screen (video, step log, report)
 rasto-remote record demo.feature --tab localhost:3000 --run R100   # then post the results to TestRail run 100
 rasto-remote status                                     # view, case, step i/n, results, saved file, testrail
 ```
@@ -408,7 +417,8 @@ wait for it before acting. With `--run`, `status` has a `testrail` object once t
 `state` is `posting`; it then holds each case's outcome. A remote recording only posts when it passes `--run`. Every
 command prints Rasto's JSON answer and exits with 1 when it says `"ok": false`.
 
-**MCP server** (`bin/rasto-mcp.js`, stdio, no dependencies) gives an agent the same as tools: `rasto_windows`,
+**MCP server** (`bin/rasto-mcp.js`, stdio, no dependencies) gives an agent the same as tools: `rasto_note` (say what it is checking, or why),
+`rasto_windows`,
 `rasto_tabs`, `rasto_record` (`window` or `tab`, optional `run`), `rasto_control`, `rasto_status`.
 
 ```bash

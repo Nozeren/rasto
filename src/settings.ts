@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-export type HotkeyAction = 'next' | 'previous' | 'pause' | 'pass' | 'fail' | 'blocked';
+export type HotkeyAction = 'next' | 'previous' | 'pause' | 'pass' | 'fail' | 'blocked' | 'note';
 
 export interface OutputSettings {
   /** Parent folder; recordings go to <root>/<subject>/<config>/. */
@@ -61,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pass: 'Control+Alt+1',
     fail: 'Control+Alt+2',
     blocked: 'Control+Alt+3',
+    note: 'Control+Alt+N',
   },
   output: {
     root: path.join(os.homedir(), 'Desktop'),

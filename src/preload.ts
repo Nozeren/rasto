@@ -49,6 +49,17 @@ contextBridge.exposeInMainWorld('recorder', {
   hudClose: () => ipcRenderer.invoke('hud-close'),
   hudState: (state: unknown) => ipcRenderer.send('hud-state', state),
   hudAction: (action: string) => ipcRenderer.send('hud-action', action),
+  noteOpen: () => ipcRenderer.send('note-open'),
+  hudNote: (text: string | null) => ipcRenderer.send('hud-note', text),
+  onHudNoteOpen: (callback: () => void) => {
+    ipcRenderer.on('hud-note-open', () => callback());
+  },
+  onNoteFocus: (callback: () => void) => {
+    ipcRenderer.on('note-focus', () => callback());
+  },
+  onNoteAdd: (callback: (text: string) => void) => {
+    ipcRenderer.on('note-add', (_event, text) => callback(text));
+  },
   onHudState: (callback: (state: unknown) => void) => {
     ipcRenderer.on('hud-state', (_event, state) => callback(state));
   },

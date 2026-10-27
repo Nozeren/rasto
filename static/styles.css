@@ -367,3 +367,13 @@ button:active:not(:disabled) { transform: translateY(0.5px); }
 
 /* The red dot in the brand gets a soft halo, so "record" is legible at a glance. */
 .brand .logo { text-shadow: 0 0 10px rgba(255, 59, 48, 0.5); }
+
+/* Notes: the recording view's box, and notes in History. */
+.note-form { display: flex; gap: 8px; margin: 10px 0; }
+.note-form input { flex: 1; min-width: 0; }
+.chip.note { background: rgba(250, 204, 21, 0.18); color: #a16207; }
+.hr-extras li.note .text { color: #a16207; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .chip.note { color: #fde68a; }
+  .hr-extras li.note .text { color: #fde68a; }
+}

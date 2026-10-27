@@ -130,6 +130,25 @@ function closeHud(): void {
   mainWindow?.focus();
 }
 
+const HUD_NOTE_HEIGHT = 52;
+
+ipcMain.on('note-open', () => {
+  if (hudWindow) {
+    hudWindow.setSize(HUD_WIDTH, HUD_HEIGHT + HUD_NOTE_HEIGHT);
+    hudWindow.focus();
+    hudWindow.webContents.send('hud-note-open');
+    return;
+  }
+  mainWindow?.show();
+  mainWindow?.focus();
+  mainWindow?.webContents.send('note-focus');
+});
+ipcMain.on('hud-note', (_event, text: string | null) => {
+  hudWindow?.setSize(HUD_WIDTH, HUD_HEIGHT);
+  hudWindow?.blur();
+  if (text) mainWindow?.webContents.send('note-add', text);
+});
+
 ipcMain.handle('hud-open', async () => openHud());
 ipcMain.handle('hud-close', async () => closeHud());
 ipcMain.on('hud-state', (_event, state: unknown) => hudWindow?.webContents.send('hud-state', state));
@@ -559,6 +578,7 @@ function applyRemoteControl(): Promise<void> {
         tabs: remoteTabs,
         record: remoteRecord,
         control: (action) => askRenderer('control', { action }),
+        note: (text) => askRenderer('note', { text }),
         status: () => askRenderer('status'),
       });
     } catch (error) {

@@ -16,7 +16,8 @@ const USAGE = `Usage:
   rasto-remote tabs                (tabs of the browser on the debugging port, recordable headless)
   rasto-remote record <file.feature | guide.md> (--window <title> | --tab <title or URL>) [--subject <name>] [--config <name>] [--run <R100>]
                                    (--run: post the results, clips and logs to that TestRail run once saved)
-  rasto-remote next | previous | pause | pass | fail | blocked | done | stop     (done ends a guide)`;
+  rasto-remote next | previous | pause | pass | fail | blocked | done | stop     (done ends a guide)
+  rasto-remote note <text>         (a note on the step on screen: in the video, step log, report and TestRail)`;
 
 const ACTIONS = ['next', 'previous', 'pause', 'pass', 'fail', 'blocked', 'done', 'stop'];
 
@@ -31,6 +32,7 @@ function run(args) {
   if (command === 'windows') return rasto.windows();
   if (command === 'tabs') return rasto.tabs();
   if (ACTIONS.includes(command)) return rasto.control(command);
+  if (command === 'note' && rest.length) return rasto.note(rest.join(' '));
   if (command === 'record' && rest[0] && (option(rest, 'window') || option(rest, 'tab'))) {
     return rasto.record({ feature: rest[0], window: option(rest, 'window'), tab: option(rest, 'tab'), subject: option(rest, 'subject'), config: option(rest, 'config'), run: option(rest, 'run') });
   }

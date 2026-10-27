@@ -54,4 +54,5 @@ module.exports = {
   tabs: () => request('GET', '/tabs'),
   record: ({ feature, window, tab, subject, config, run }) => request('POST', '/record', { feature: path.resolve(feature), window, tab, subject, config, run }),
   control: (action) => request('POST', '/control', { action }),
+  note: (text) => request('POST', '/note', { text }),
 };

@@ -24,6 +24,7 @@ interface LogStep {
   text: string;
   console?: { at: string; level: string; text: string; source?: string; paused?: boolean }[];
   actions?: { at: string; kind: string; text: string; value?: string }[];
+  notes?: { at: string; text: string }[];
 }
 
 interface LogCase {
@@ -112,6 +113,9 @@ function evidence(step: LogStep, requests: HistoryRequest[]): StepEvidence {
 /** The step on screen when a case got Fail or Blocked: its last logged step. */
 const failingStep = (c: LogCase): LogStep | undefined => (c.result === 'fail' || c.result === 'blocked' ? c.steps[c.steps.length - 1] : undefined);
 
+/** A case's notes, with the step each was made on. */
+const notesOf = (c: LogCase) => c.steps.flatMap((s) => (s.notes ?? []).map((n) => ({ ...n, step: s.step })));
+
 /**
  * The console errors and failed requests of a failed case, up to the failure, newest first: the cause often shows a
  * step or two before the check that fails. Each with its time and step.
@@ -135,15 +139,18 @@ function stepHtml(step: LogStep, requests: HistoryRequest[], failedHere: string 
     e.warnings.length && plural(e.warnings.length, 'warning'),
     e.requests.length && (e.failed.length ? `${e.failed.length} of ${plural(e.requests.length, 'request')} failed` : plural(e.requests.length, 'request')),
     step.actions?.length && `${plural(step.actions.length, 'click')} / typing`,
+    step.notes?.length && plural(step.notes.length, 'note'),
   ].filter(Boolean);
 
   const events = [
     ...(step.actions ?? []).map((a) => ({ at: seconds(a.at), html: `${timeButton(a.at)}<span>${escape(a.kind[0].toUpperCase() + a.kind.slice(1))} · ${escape(a.text)}${a.value !== undefined ? `: ${escape(a.value)}` : ''}</span>` })),
     ...[...e.errors, ...e.warnings].map((x) => ({ at: seconds(x.at), html: `${timeButton(x.at)}<span class="${x.level === 'error' ? 'err' : 'warn'}">${escape(x.text)}${x.source ? ` <small>${escape(x.source)}</small>` : ''}</span>` })),
     ...e.failed.map((r) => ({ at: r.at, html: `${timeButton(r.at)}<span class="err">${escape(r.method)} ${r.status || escape(r.error ?? 'failed')} ${escape(r.url)}</span>` })),
+    ...(step.notes ?? []).map((n) => ({ at: seconds(n.at), html: `${timeButton(n.at)}<span class="note">Note · ${escape(n.text)}</span>` })),
   ].sort((a, b) => a.at - b.at);
 
-  const bad = e.errors.length || e.failed.length || failedHere;
+  // Notes are what the tester (or the agent) wanted a reader to see: always open.
+  const bad = e.errors.length || e.failed.length || failedHere || step.notes?.length;
   return `<li class="step${failedHere ? ' failed-here' : ''}">
     <div class="row">${timeButton(step.at)}<span class="label">${escape(step.step)}</span><span class="text">${escape(step.text)}${failedHere ? ` <span class="here">${failedHere}</span>` : ''}</span></div>
     ${summary.length ? `<details${bad ? ' open' : ''}><summary class="${e.errors.length || e.failed.length ? 'err' : ''}">${summary.join(' · ')}</summary>
@@ -156,7 +163,10 @@ function summaryText(log: StepLog, byStep: Map<LogStep, HistoryRequest[]>, when:
   const lines = [`Rasto report: ${log.video} (${log.subject} / ${log.config}, ${when}, ${log.duration})`, ''];
   for (const c of log.cases) {
     lines.push(`${(RESULT_LABEL[c.result] ?? c.result).toUpperCase()}  ${caseName(c)}  ${c.title}`);
-    for (const step of c.steps) lines.push(`  ${step.at}  ${step.step.padEnd(15)} ${step.text}`);
+    for (const step of c.steps) {
+      lines.push(`  ${step.at}  ${step.step.padEnd(15)} ${step.text}`);
+      for (const n of step.notes ?? []) lines.push(`    ${n.at}  note: ${n.text}`);
+    }
     const at = failingStep(c);
     if (at) {
       lines.push(`  → ${RESULT_LABEL[c.result]} at ${at.at}, ${at.step}: ${at.text}`);
@@ -205,6 +215,7 @@ export function reportHtml(log: StepLog, videoSrc: string, requests: HistoryRequ
           <div><span class="pill ${escape(c.result)}">${escape(RESULT_LABEL[c.result])}</span> <b>${escape(caseName(c))}</b> ${escape(c.title)}</div>
           <div class="where">${c.result === 'blocked' ? 'Blocked' : 'Failed'} at ${timeButton(at.at)} <span class="label">${escape(at.step)}</span> ${escape(at.text)}</div>
           ${lines.length ? `<div class="muted small">Errors and failed requests before it, latest first:</div><ul class="lines">${lines.map((l) => `<li>${l}</li>`).join('')}</ul>` : '<div class="muted">No console error or failed request in this case: the video shows what was on screen.</div>'}
+          ${notesOf(c).length ? `<div class="muted small">Notes:</div><ul class="lines">${notesOf(c).map((n) => `<li>${timeButton(n.at)} <span class="label">${escape(n.step)}</span> <span class="note">${escape(n.text)}</span></li>`).join('')}</ul>` : ''}
           <button class="t watch" data-t="${Math.max(0, seconds(at.at) - 4)}">▶ Watch the failure</button>
         </div>`;
       }).join('')}</section>`
@@ -227,8 +238,8 @@ export function reportHtml(log: StepLog, videoSrc: string, requests: HistoryRequ
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(headline)} · ${escape(log.video)} · Rasto report</title>
 <style>
-  :root{--bg:#f6f7f9;--card:#fff;--ink:#1f2328;--muted:#656d76;--line:#d8dee4;--accent:#0969da;--pass:#1a7f37;--fail:#cf222e;--blocked:#bc4c00;--warn:#9a6700;--bad-bg:#ffebe9;--good-bg:#dafbe1}
-  @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--ink:#e6edf3;--muted:#8d96a0;--line:#30363d;--accent:#4493f8;--pass:#3fb950;--fail:#f85149;--blocked:#db6d28;--warn:#d29922;--bad-bg:#2d1517;--good-bg:#12261a}}
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1f2328;--muted:#656d76;--line:#d8dee4;--accent:#0969da;--pass:#1a7f37;--fail:#cf222e;--blocked:#bc4c00;--warn:#9a6700;--note:#7a4d00;--bad-bg:#ffebe9;--good-bg:#dafbe1}
+  @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--ink:#e6edf3;--muted:#8d96a0;--line:#30363d;--accent:#4493f8;--pass:#3fb950;--fail:#f85149;--blocked:#db6d28;--warn:#d29922;--note:#e3b341;--bad-bg:#2d1517;--good-bg:#12261a}}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
   main{max-width:1440px;margin:0 auto;padding:24px 16px 60px}
   header .brand{color:var(--muted);font-size:13px;font-weight:600} h1{font-size:24px;margin:2px 0 4px}
@@ -261,7 +272,7 @@ export function reportHtml(log: StepLog, videoSrc: string, requests: HistoryRequ
   button.t:hover{text-decoration:underline} li.current>.row .text{font-weight:700} li.current>.row button.t::before{content:"▶ ";}
   details{margin:4px 0 0 70px} summary{cursor:pointer;color:var(--muted);font-size:13px} summary.err{color:var(--fail)}
   .events li{display:flex;gap:10px;font-size:13px;padding:2px 0} .events span{word-break:break-word} small{color:var(--muted)}
-  .err{color:var(--fail)} .warn{color:var(--warn)} .clips li,.files li{padding:3px 0}
+  .err{color:var(--fail)} .warn{color:var(--warn)} .note{color:var(--note);font-weight:600} .clips li,.files li{padding:3px 0}
   .files a{color:var(--accent);font-weight:600;text-decoration:none} .files a:hover{text-decoration:underline}
   footer{color:var(--muted);font-size:12px;margin-top:30px;line-height:1.7}
   @media print{.player,.copy,button.watch{display:none} details{display:block} details>*{display:block}}
