@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- The README wordmark: "rast" and the recording dot as the "o", reached by a trail through ticked checkpoints (like build/icon.svg).
+     Open with ?theme=dark or ?theme=light and screenshot at 2x on a transparent background; see the README, Development. -->
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent}svg{display:block}</style></head>
+<body>
+<svg id="w" xmlns="http://www.w3.org/2000/svg" width="560" height="190" viewBox="0 0 560 190">
+  <defs>
+    <radialGradient id="dot" cx="0.38" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#ff7a6e"/><stop offset="0.55" stop-color="#ff3b30"/><stop offset="1" stop-color="#d1241b"/>
+    </radialGradient>
+  </defs>
+  <text id="t" x="8" y="150" font-family="Red Hat Display" font-weight="900" font-size="160" letter-spacing="-5">rast</text>
+  <g id="trail"></g>
+</svg>
+<script>
+  const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+  const ink = theme === 'dark' ? '#e6edf3' : '#1f2328';
+  const tick = theme === 'dark' ? '#0d1117' : '#ffffff';
+  document.fonts.load('900 160px "Red Hat Display"').then(() => {
+    const t = document.getElementById('t');
+    t.setAttribute('fill', ink);
+    const box = t.getBBox();
+    // Red Hat Display's x-height is about 0.52 em: the dot is the size of a lowercase "o" (outer edge incl. its ring).
+    const baseline = 150, xHeight = 160 * 0.52;
+    const r = xHeight / 2 - 2, ox = box.x + box.width + 54 + r, oy = baseline - xHeight / 2;
+    // The trail: from the foot of the "t" up through two ticked checkpoints to the dot.
+    const p0 = [box.x + box.width + 4, baseline - 9], p1 = [p0[0] + 26, baseline - 30];
+    const g = document.getElementById('trail');
+    const ns = 'http://www.w3.org/2000/svg';
+    const add = (tag, attrs) => { const el = document.createElementNS(ns, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); g.appendChild(el); return el; };
+    add('path', { d: `M${p0} Q${p1[0] + 4},${p1[1] + 10} ${p1} T${ox - r * 0.7},${oy + r * 0.45}`, fill: 'none', stroke: ink, 'stroke-opacity': 0.5,
+      'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-dasharray': '0.5 10' });
+    for (const [x, y] of [p0, p1]) {
+      add('circle', { cx: x, cy: y, r: 9, fill: ink });
+      add('path', { d: `M${x - 4},${y} l3,3 l5.5,-6`, fill: 'none', stroke: tick, 'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    }
+    add('circle', { cx: ox, cy: oy, r, fill: 'url(#dot)' });
+    add('circle', { cx: ox, cy: oy, r, fill: 'none', stroke: '#ffffff', 'stroke-width': 6 });
+    if (theme === 'light') add('circle', { cx: ox, cy: oy, r: r + 4, fill: 'none', stroke: '#1f2328', 'stroke-opacity': 0.15, 'stroke-width': 1.5 });
+    const w = Math.ceil(ox + r + 12);
+    const svg = document.getElementById('w');
+    svg.setAttribute('width', w); svg.setAttribute('viewBox', `0 0 ${w} 190`);
+    document.title = `ready ${w}`;
+  });
+</script>
+</body></html>
