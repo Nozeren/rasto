@@ -289,6 +289,8 @@ interface RecorderApi {
   listSources(): Promise<CaptureSource[]>;
   captureBegin(): Promise<string>;
   captureChunk(data: ArrayBuffer): void;
+  /** Closes and deletes the capture in progress (nothing was recorded). */
+  captureAbort(): Promise<void>;
   captureSnapshot(meta: RecordingMeta): void;
   saveRecording(meta: RecordingMeta): Promise<SaveResult>;
   unsavedList(): Promise<UnsavedRecording[]>;

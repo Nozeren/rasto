@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('recorder', {
   listSources: () => ipcRenderer.invoke('list-sources'),
   captureBegin: () => ipcRenderer.invoke('capture-begin'),
   captureChunk: (data: ArrayBuffer) => ipcRenderer.send('capture-chunk', data),
+  captureAbort: () => ipcRenderer.invoke('capture-abort'),
   captureSnapshot: (meta: unknown) => ipcRenderer.send('capture-snapshot', meta),
   saveRecording: (meta: unknown) => ipcRenderer.invoke('save-recording', meta),
   unsavedList: () => ipcRenderer.invoke('unsaved-list'),

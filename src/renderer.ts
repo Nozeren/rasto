@@ -121,6 +121,11 @@ let mediaRecorder: MediaRecorder | null = null;
 /** Chunks go to main (unsaved.ts) as they come, one after another; finishing waits for the last one. */
 let chunkWrites: Promise<void> = Promise.resolve();
 let snapshotHandle: number | undefined;
+/** True once the captured window has delivered a picture (a window source can stream nothing at all, see noPicture). */
+let sourceHasPicture = false;
+/** Bytes of video the recorder has produced; still 0 a few seconds in means nothing is being recorded. */
+let capturedBytes = 0;
+let noDataHandle: number | undefined;
 let timerHandle: number | undefined;
 let runCases: ActiveCase[] = [];
 let runIndex = 0;
@@ -749,6 +754,26 @@ async function startTabPreview(source: CaptureSource): Promise<void> {
   setStatus(`Will record the browser tab "${source.name}".`, 'ok');
 }
 
+/** How long a window may take to show its first picture before Rasto says it gets none. */
+const PICTURE_TIMEOUT_MS = 4000;
+
+/**
+ * Why a window gives no picture. On Linux under Wayland the screen-share stream can deliver nothing at all (the frames
+ * can't be read, e.g. "Error creating EGLImage" in the log): then a browser tab can still be recorded directly.
+ */
+function noPicture(name: string): string {
+  const linux = navigator.userAgent.includes('Linux');
+  return `No picture is coming from "${name}", so nothing would be recorded.`
+    + (linux ? ' On Linux with Wayland, screen sharing can fail like this: record the browser tab instead (a Chrome started with --remote-debugging-port; see the README, "Browser").' : ' Pick it again, or another window.');
+}
+
+/** Resolves true as soon as the window shows a picture, false after `ms` without one. */
+async function pictureArrives(ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (!sourceHasPicture && Date.now() < until) await new Promise((resolve) => window.setTimeout(resolve, 100));
+  return sourceHasPicture;
+}
+
 /** Captures the selected source and draws it with the banner, so the preview is exactly the video. */
 async function startPreview(): Promise<void> {
   if (!selectedSource) return;
@@ -757,6 +782,7 @@ async function startPreview(): Promise<void> {
     await startTabPreview(selectedSource);
     return;
   }
+  sourceHasPicture = false;
   const constraints = {
     audio: false,
     video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: selectedSource.id, maxFrameRate: CAPTURE_FPS } },
@@ -777,6 +803,11 @@ async function startPreview(): Promise<void> {
   $<HTMLParagraphElement>('preview-caption').textContent =
     `${selectedSource.name} · ${width}×${height}. This is what the video will look like.`;
   setStatus(`Will record "${selectedSource.name}".`, 'ok');
+  const source = selectedSource;
+  if (!(await pictureArrives(PICTURE_TIMEOUT_MS)) && selectedSource === source && stream) {
+    $<HTMLParagraphElement>('preview-caption').textContent = 'No picture from this window.';
+    setStatus(noPicture(source.name), 'error');
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1159,6 +1190,7 @@ function drawFrame(): void {
     drawRipples(canvasEl.width, canvasEl.height);
   } else {
     if (sourceVideo.readyState < 2) return;
+    sourceHasPicture = true;
     ctx.drawImage(sourceVideo, 0, 0, canvasEl.width, canvasEl.height);
   }
   drawBanner(canvasEl.width, canvasEl.height);
@@ -1296,6 +1328,10 @@ async function startRecording(): Promise<void> {
   await saveOutput();
   if (!previewing()) await startPreview();
   if (!previewing()) return;
+  if (selectedSource.kind !== 'tab' && !(await pictureArrives(PICTURE_TIMEOUT_MS))) {
+    setStatus(noPicture(selectedSource.name), 'error');
+    return;
+  }
   await startBrowserCapture();
   // A browser tab is recorded without the HUD or a countdown: there's no window to switch to, and nothing on screen.
   const headless = selectedSource.kind === 'tab';
@@ -1346,13 +1382,20 @@ async function beginCapture(): Promise<void> {
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
   mediaRecorder = new MediaRecorder(canvasEl.captureStream(CAPTURE_FPS), { mimeType });
   chunkWrites = Promise.resolve();
+  capturedBytes = 0;
   mediaRecorder.ondataavailable = (event) => {
     if (event.data.size === 0) return;
+    capturedBytes += event.data.size;
     const data = event.data;
     chunkWrites = chunkWrites.then(async () => window.recorder.captureChunk(await data.arrayBuffer()));
   };
   mediaRecorder.onstop = () => void finishRecording();
   mediaRecorder.start(1000);
+  // Chunks come every second: none after a few means the source stopped giving pictures. Stop rather than record nothing.
+  window.clearTimeout(noDataHandle);
+  noDataHandle = window.setTimeout(() => {
+    if (isRecording() && !paused && capturedBytes === 0) void abortRecording(noPicture(selectedSource?.name ?? 'the source'));
+  }, 6000);
 
   paused = false;
   activeMs = 0;
@@ -1461,6 +1504,28 @@ function recordResult(result: CaseResult): void {
   pushHud();
 }
 
+/** Ends a recording that captured nothing: no video to save, back to ③ with why. */
+async function abortRecording(message: string): Promise<void> {
+  window.clearTimeout(noDataHandle);
+  window.clearInterval(timerHandle);
+  window.clearInterval(snapshotHandle);
+  if (mediaRecorder) {
+    mediaRecorder.onstop = null;
+    if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  }
+  mediaRecorder = null;
+  activeCase = null;
+  cards = [];
+  paused = false;
+  await chunkWrites;
+  await window.recorder.captureAbort();
+  await window.recorder.browserStop();
+  await window.recorder.hudClose();
+  stopPreview();
+  showView('save');
+  setStatus(message, 'error');
+}
+
 function stopRecording(): void {
   if (countdownUntil) {
     void cancelCountdown();
@@ -1500,6 +1565,12 @@ function networkSummary(meta: RecordingMeta, network?: { har: string; requests: 
 }
 
 async function finishRecording(): Promise<void> {
+  window.clearTimeout(noDataHandle);
+  await chunkWrites;
+  if (capturedBytes === 0) {
+    await abortRecording(noPicture(selectedSource?.name ?? 'the source'));
+    return;
+  }
   await window.recorder.browserStop();
   const meta: RecordingMeta = { ...currentMeta(), durationMs: activeMs };
   mediaRecorder = null;
