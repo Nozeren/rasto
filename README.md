@@ -26,7 +26,8 @@ happened, with no video editing.**
   step and its network into a `.har`, secrets redacted.
 - **Posts the results to TestRail**, with the steps, clips and logs attached.
 - **History** of every recording, played inside Rasto with its evidence per step.
-- **Remote control** (HTTP API, CLI, MCP server) so scripts and AI agents can drive it, even with a headless browser.
+- **Remote control** (HTTP API, CLI, MCP server) so scripts and AI agents can drive it, even with a headless browser,
+  and a **pytest-bdd plugin** that records automated scenarios with the steps in sync.
 
 ## Words used here
 
@@ -389,6 +390,38 @@ claude mcp add rasto -- node path/to/rasto/bin/rasto-mcp.js
 
 `RASTO_USER_DATA=<folder>` points the CLI and the MCP server at another profile, e.g. a development Rasto started with
 `npx electron . --user-data-dir=<folder>`.
+
+## Recording pytest-bdd scenarios
+
+[`integrations/pytest/pytest_rasto.py`](integrations/pytest/pytest_rasto.py) is a pytest plugin that records every
+pytest-bdd scenario that opens a Playwright `page`: one video per scenario, with the banner following the step that is
+running and the case closed as **pass**, **fail** (a step raised) or **blocked** (a step has no definition). The project
+under test doesn't need to know about it, and scenarios that never open a browser (API tests) are left alone.
+
+```bash
+# Rasto running, with ⚙ Settings → Remote control on
+PYTHONPATH=path/to/rasto/integrations/pytest \
+  pytest -p pytest_rasto --rasto --rasto-subject checkout --rasto-config staging_chrome
+```
+
+- Chromium only. The plugin adds Rasto's **Debugging port** (⚙ Settings → Browser) to the browser Playwright launches,
+  so it works headless too. A scenario's `@C<id>` tag names its video and posts to TestRail like a `.feature` would.
+- Recording starts when the scenario opens its `page` (usually during its first step) and catches up to the step
+  pytest-bdd is on. After the result, the plugin waits for Rasto to stop before the fixtures tear down, so the video
+  ends with the result rather than the clean-up (logout, closing the page).
+- One scenario at a time: with `-n` (pytest-xdist) it stops with an error. `--rasto` off, it does nothing.
+- It records the scenario's `page` tab only: popups and other tabs the scenario opens aren't in the video.
+- Automated steps take a fraction of a second each; Playwright's `--slowmo 250` (pytest-playwright) makes the video
+  easier to follow.
+
+[`integrations/pytest/example/`](integrations/pytest/example) has a demo shop and three scenarios that pass, fail and
+are blocked, plus one that never opens a browser:
+
+```bash
+cd integrations/pytest/example
+pip install pytest-bdd pytest-playwright && playwright install chromium
+PYTHONPATH=.. pytest -p pytest_rasto --rasto --slowmo 250
+```
 
 ## thumbdeck
 
