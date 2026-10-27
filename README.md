@@ -10,7 +10,7 @@ happened, with no video editing.**
 
 *Rasto* is Portuguese for "trail". A local desktop app (Electron + TypeScript) for macOS, Windows and Linux.
 
-![A recording made by Rasto: the current step in the banner, clicks and typing shown, then PASSED and FAILED](docs/demo.gif)
+![A recording made by Rasto: the current step on the label, clicks and typing shown, then PASSED and FAILED](docs/demo.gif)
 
 ## What it does
 
@@ -39,7 +39,7 @@ Test cases are written in [Gherkin](https://cucumber.io/docs/gherkin/reference/)
 
 - **Scenario:** one test case, as Given / When / Then steps.
 - **Scenario Outline** and **Examples row:** a scenario with placeholders (`<method>`) and an Examples table; each row
-  is one run of it. Rasto records one row at a time and shows it in the banner (`C101 · Guest`).
+  is one run of it. Rasto records one row at a time and shows it on the step label (`C101 · Guest`).
 - **Background:** steps every scenario of the feature starts with (e.g. logging in). You can leave them out of the
   video when that setup happens off camera.
 - **Guide:** not a test but a how-to video, from a Markdown file with numbered steps (see *Guides*).
@@ -99,9 +99,9 @@ The app walks you through three steps (top bar), then records:
 
    ![Cases: a scenario outline loaded, both Examples rows in the queue](docs/screenshots/cases.png)
 2. **② What to record.** Click the browser window's card (filter by name). The **Preview** shows exactly what the
-   video will look like, banner included.
+   video will look like, step label included.
 
-   ![What to record: a browser tab picked, the preview with the step banner](docs/screenshots/source.png)
+   ![What to record: a browser tab picked, the preview with the step label](docs/screenshots/source.png)
 3. **③ Save to.** Set **Subject** and **Config** (recent values are suggested); the full file name is shown. Click
    **● Start recording**.
 
@@ -161,9 +161,9 @@ The app walks you through three steps (top bar), then records:
 | **Feature file** | **Open .feature file…**, then pick the scenario. The case id comes from its `@C<id>` tag (`@C103`). |
 | **Paste** | Paste a Scenario, or just `Given` / `When` / `Then` lines. |
 
-A **Scenario Outline** shows its Examples table: pick the row to record; placeholders are filled in and the banner shows
+A **Scenario Outline** shows its Examples table: pick the row to record; placeholders are filled in and the step label shows
 the row (`C101 · Guest`). **Include Background steps** adds the Background as its own section above the Scenario,
-numbered separately in the list and in the banner (`Background 2/4`, then `Step 1/10`). The case can't be changed while
+numbered separately in the list and on the step label (`Background 2/4`, then `Step 1/10`). The case can't be changed while
 recording.
 
 TestRail cases are stored as HTML; the Background comes from the preconditions and the scenario from the steps. Older
@@ -195,9 +195,19 @@ so a reviewer can jump straight to a step.
 
 ## Steps, hotkeys and the HUD
 
-The screen is drawn onto a canvas with a banner at the bottom (`DEMO · 3/6 · When I open the second login page`),
-and the canvas is what gets recorded, so the current step is part of the video. The step list in the app highlights the
-current step; clicking a step jumps to it.
+The screen is drawn onto a canvas with the **step label** on it, and the canvas is what gets recorded, so the current
+step is part of the video. The label is a small card in a bottom corner, sized to the video so it reads the same at any
+resolution:
+
+- first line: the case (`C101 · Guest`), its progress (one segment per step: done, now, next), the step number (`2/3`,
+  or `Background 1/2`) and, in a tab recording, the last click or typing;
+- second line: the step itself, big (`When I open the second login page`).
+
+On **Pass / Fail / Blocked** the card turns green, red or amber for 2 s and keeps the step it happened on (`FAILED at
+3/3 · Then I see the order confirmation`), with what comes next (`next: C102` or `end of run · 1 passed, 1 failed`).
+**⚙ Settings → Step label** picks its corner (bottom left or right); in a tab recording, a click that lands under the
+card moves it to the other corner, so it doesn't hide what's being used. A guide keeps its own bar (see *Guides*). The
+step list in the app highlights the current step; clicking a step jumps to it.
 
 The hotkeys (table in *How to use*) are global: they work while the browser has focus. Change them in **⚙ Settings →
 Hotkeys**: **Change**, then press the new combination (it must include Ctrl, Alt or Cmd). A combination already taken by
@@ -361,8 +371,7 @@ recording driven entirely by an agent, start Rasto hidden too: `Rasto --hidden` 
 `--window`. Linux still needs a display server for Rasto itself (on a server, run it under `xvfb-run`).
 
 **Clicks and typing.** A tab has no mouse pointer in the video, so with **⚙ Settings → Browser → Clicks and typing**
-(on by default) Rasto shows them: a red ripple where each click lands, and a label above the banner with what was
-clicked or typed (`Click · Sign in`, `Type · Email: bob@example.test`, `Choose · Plan: Team`, `Key · Enter`). Typing in
+(on by default) Rasto shows them: a red ripple where each click lands, and what was clicked or typed on the step label (`Click · Sign in`, `Type · Email: bob@example.test`, `Choose · Plan: Team`, `Key · Enter`). Typing in
 one field counts as one action holding its final value. Password fields and fields that look secret (PIN, card number,
 CVC, one-time code, token, API key) always show `••••••`, so not even their length is in the video or the log. The
 actions are also listed per step in the step log (`"actions": [{ "at": "00:01.2", "kind": "click", "text": "Email" }]`)
@@ -412,7 +421,7 @@ claude mcp add rasto -- node path/to/rasto/bin/rasto-mcp.js
 ## Recording pytest-bdd scenarios
 
 [`integrations/pytest/pytest_rasto.py`](integrations/pytest/pytest_rasto.py) is a pytest plugin that records every
-pytest-bdd scenario that opens a Playwright `page`: one video per scenario, with the banner following the step that is
+pytest-bdd scenario that opens a Playwright `page`: one video per scenario, with the step label following the step that is
 running and the case closed as **pass**, **fail** (a step raised) or **blocked** (a step has no definition). The project
 under test doesn't need to know about it, and scenarios that never open a browser (API tests) are left alone.
 
