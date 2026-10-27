@@ -26,6 +26,8 @@ happened, with no video editing.**
 - **A shareable report:** one `.html` per recording that opens with what went wrong and the errors before it, then the
   video, every step and what happened during it, with the `.har` and step log inside. Send the one file to a developer;
   it opens offline in any browser.
+- **Sensitive fields blurred** in tab recordings (passwords, card fields, anything the page marks), so videos can be
+  shared.
 - **Console and network:** with Chrome or Edge started with a debugging port, the page's console errors go under each
   step and its network into a `.har`, secrets redacted.
 - **Posts the results to TestRail**, with the steps, clips and logs attached.
@@ -377,6 +379,14 @@ recording driven entirely by an agent, start Rasto hidden too: `Rasto --hidden` 
 `RASTO_HIDDEN=1`); launching it again shows the window. The agent drives the same browser (e.g. Playwright's
 `connectOverCDP("http://127.0.0.1:9222")`) and Rasto through the remote control below, with `--tab` instead of
 `--window`. Linux still needs a display server for Rasto itself (on a server, run it under `xvfb-run`).
+
+**Sensitive fields.** In a tab recording, **⚙ Settings → Browser → Sensitive fields** (on by default) pixelates, in
+the video itself, every field that looks secret: passwords, card number / CVC / PIN, tokens, one-time codes (the same
+rule that masks their typing), and card fields (`autocomplete="cc-…"`). A page can mark anything else, a profile block
+or an email, with `data-rasto-blur` or `class="rasto-blur"`. The page reports where those fields are as it scrolls and
+changes (checked every 200 ms), and each area is drawn as 12 px blocks with a margin, so no original pixels reach the
+video. It's best effort: a field that jumps (a fast scroll) can show for a frame before the blur catches up, so record
+test accounts and test cards. Window and screen recordings can't see the page's fields and aren't blurred.
 
 **Clicks and typing.** A tab has no mouse pointer in the video, so with **⚙ Settings → Browser → Clicks and typing**
 (on by default) Rasto shows them: a red ripple where each click lands, and what was clicked or typed on the step label (`Click · Sign in`, `Type · Email: bob@example.test`, `Choose · Plan: Team`, `Key · Enter`). Typing in

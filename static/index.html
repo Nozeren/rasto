@@ -310,6 +310,8 @@
       <div class="form">
         <label for="browser-port">Debugging port</label>
         <div><input id="browser-port" type="number" min="1024" max="65535" step="1"> <span class="hint">the browser's --remote-debugging-port</span></div>
+        <label for="pref-blur">Sensitive fields</label>
+        <label class="check"><input id="pref-blur" type="checkbox"> Blur them in tab recordings <span class="hint">(passwords, card fields, secret-looking fields, and anything marked data-rasto-blur)</span></label>
         <label for="pref-input">Clicks and typing</label>
         <label class="check"><input id="pref-input" type="checkbox"> Show them in tab recordings (a ripple, a label) and list them per step <span class="hint">(passwords masked)</span></label>
         <label for="pref-console">Console</label>

@@ -63,6 +63,7 @@ interface Preferences {
   failureClipSec: number;
   showInput: boolean;
   labelCorner: 'left' | 'right';
+  blurSensitive: boolean;
 }
 
 interface AppSettings {
@@ -304,6 +305,8 @@ interface RecorderApi {
   screencastStop(): Promise<void>;
   onFrame(callback: (frame: { data: string; viewport: { width: number; height: number } }) => void): void;
   onInput(callback: (event: InputEvent) => void): void;
+  /** Where the sensitive fields of the recorded tab are: [x, y, width, height] in viewport CSS pixels. */
+  onBlurRects(callback: (rects: [number, number, number, number][]) => void): void;
   setOutput(output: Partial<OutputSettings>): Promise<OutputPreview>;
   chooseOutputRoot(): Promise<string | null>;
   setPreferences(preferences: Partial<Preferences>): Promise<AppSettings>;
