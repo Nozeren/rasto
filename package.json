@@ -1,7 +1,7 @@
 {
   "name": "rasto",
   "productName": "Rasto",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Rasto: record manual test runs with the current Gherkin step burned into the video.",
   "private": true,
   "license": "MIT",
