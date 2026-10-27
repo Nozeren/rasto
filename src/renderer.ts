@@ -50,6 +50,7 @@ const HOTKEY_LABELS: Record<HotkeyAction, string> = {
   pass: 'Case passed',
   fail: 'Case failed',
   blocked: 'Case blocked',
+  note: 'Add a note',
 };
 
 const RESULT_STYLE: Record<CaseResult, { label: string; color: string }> = {
@@ -101,6 +102,10 @@ let inputRipples: { x: number; y: number; at: number }[] = [];
 let inputLabel: { text: string; until: number } | null = null;
 /** The step card's bottom corner: the setting, until a click lands under the card and it moves to the other one. */
 let cardCorner: 'left' | 'right' | null = null;
+/** The last note, shown above the step card for NOTE_MS. */
+let noteShown: { text: string; until: number } | null = null;
+const NOTE_MS = 4000;
+const NOTE_MAX_LENGTH = 500;
 /** Where the card was last drawn, in canvas pixels, to know when a click lands under it. */
 let cardRect = { x: 0, y: 0, w: 0, h: 0 };
 const RIPPLE_MS = 700;
@@ -953,6 +958,24 @@ function drawBanner(width: number, height: number): void {
   drawStepCard(width, height, c, index);
 }
 
+/** A note, as a yellow chip just above the step card, in the same corner. */
+function drawNoteChip(text: string, cardX: number, cardY: number, cardWidth: number, corner: 'left' | 'right', width: number, s: number, size: number): void {
+  const font = Math.round(size * 1.15);
+  const pad = 8 * s;
+  const height = font * 1.9;
+  ctx.font = `600 ${font}px ${BANNER_FONT}`;
+  const shown = fitText(`Note · ${text}`, width * 0.46 - 2 * pad);
+  const chipWidth = Math.min(width * 0.46, ctx.measureText(shown).width + 2 * pad);
+  const x = corner === 'left' ? cardX : cardX + cardWidth - chipWidth;
+  const y = cardY - 6 * s - height;
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath();
+  ctx.roundRect(x, y, chipWidth, height, 8 * s);
+  ctx.fill();
+  ctx.fillStyle = '#422006';
+  ctx.fillText(shown, x + pad, y + height / 2);
+}
+
 const CARD_MONO = 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace';
 
 /** "2/3", or "Background 1/2" for a Background step. */
@@ -1076,6 +1099,8 @@ function drawStepCard(width: number, height: number, c: ActiveCase, index: numbe
     }
     ctx.fillText(fitText(extra, x0 + cardWidth - pad - x), x, mid1);
   }
+
+  if (!result && noteShown && now < noteShown.until) drawNoteChip(noteShown.text, x0, y0, cardWidth, corner, width, s, small);
 
   const mid2 = y0 + pad + small * 1.3 + gap + (big * 1.25) / 2;
   x = x0 + pad;
@@ -1243,6 +1268,7 @@ async function startRecording(): Promise<void> {
   finishing = false;
   flash = null;
   cardCorner = null;
+  noteShown = null;
   paused = false;
   activeMs = 0;
   segmentStart = Date.now();
@@ -1729,7 +1755,7 @@ function plural(n: number, word: string): string {
 }
 
 /** A small pill for the evidence row; `kind` colours it (error, warn, ok, muted). */
-function chip(text: string, kind: 'error' | 'warn' | 'ok' | 'muted' | '' = ''): HTMLSpanElement {
+function chip(text: string, kind: 'error' | 'warn' | 'ok' | 'muted' | 'note' | '' = ''): HTMLSpanElement {
   const node = el('span', `chip${kind ? ` ${kind}` : ''}`, text);
   return node;
 }
@@ -1760,6 +1786,8 @@ function renderEvidence(entry: HistoryEntry, requests: HistoryRequest[] | null):
   }
   const actions = steps.reduce((n, s) => n + (s.actions?.length ?? 0), 0);
   if (actions) box.append(chip(plural(actions, 'click / typing'), ''));
+  const notes = steps.reduce((n, s) => n + (s.notes?.length ?? 0), 0);
+  if (notes) box.append(chip(plural(notes, 'note'), 'note'));
   if (entry.clips.length) box.append(chip(plural(entry.clips.length, 'clip'), ''));
   box.hidden = !box.childElementCount;
 }
@@ -1881,7 +1909,8 @@ function stepExtras(entry: HistoryEntry, step: HistoryStep, requests: HistoryReq
   const logs = (step.console ?? []).length - problems.length;
   const failed = requests.filter((r) => r.failed);
   const actions = step.actions ?? [];
-  if (!problems.length && !failed.length && !actions.length && !logs && !requests.length) return null;
+  const notes = step.notes ?? [];
+  if (!problems.length && !failed.length && !actions.length && !notes.length && !logs && !requests.length) return null;
 
   const errors = problems.filter((e) => e.level === 'error').length;
   const warnings = problems.length - errors;
@@ -1890,6 +1919,7 @@ function stepExtras(entry: HistoryEntry, step: HistoryStep, requests: HistoryReq
     warnings && plural(warnings, 'warning'),
     requests.length && (failed.length ? `${failed.length} of ${plural(requests.length, 'request')} failed` : plural(requests.length, 'request')),
     actions.length && plural(actions.length, 'click / typing'),
+    notes.length && plural(notes.length, 'note'),
     logs && plural(logs, 'log'),
   ].filter(Boolean) as string[];
 
@@ -1906,6 +1936,7 @@ function stepExtras(entry: HistoryEntry, step: HistoryStep, requests: HistoryReq
       text: `${r.method} ${r.status || r.error || 'failed'} ${r.url}`,
     })),
     ...actions.map((a) => ({ seconds: parseAt(a.at), at: a.at, kind: 'action', text: actionText(a) })),
+    ...notes.map((n) => ({ seconds: parseAt(n.at), at: n.at, kind: 'note', text: `Note · ${n.text}` })),
   ].sort((a, b) => a.seconds - b.seconds);
   for (const item of items) {
     const li = el('li', item.kind);
@@ -1973,7 +2004,23 @@ function runAction(action: HotkeyAction | 'stop'): void {
   else if (action === 'previous') goToStep(stepIndex - 1);
   else if (action === 'pause') togglePause();
   else if (action === 'stop') stopRecording();
+  else if (action === 'note') window.recorder.noteOpen();
   else recordResult(action);
+}
+
+/**
+ * A note on the step on screen (hotkey, HUD, the recording view, or remote control): kept in the step log under that
+ * step, and shown above the step card in the video for a few seconds. One line, at most NOTE_MAX_LENGTH characters.
+ */
+function addNote(raw: string): { ok: true; note: string; step: string } | { ok: false; error: string } {
+  const text = raw.replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX_LENGTH);
+  if (!text) return { ok: false, error: 'The note is empty' };
+  if (!isRecording() || !activeCase) return { ok: false, error: 'Not recording' };
+  const step = loggedCases[loggedCases.length - 1]?.steps.at(-1);
+  if (!step) return { ok: false, error: 'No step on screen yet' };
+  (step.notes ??= []).push({ text, atMs: elapsedMs() });
+  noteShown = { text, until: Date.now() + NOTE_MS };
+  return { ok: true, note: text, step: `${step.section} ${step.position}/${step.total}` };
 }
 
 function remoteStatus(): Record<string, unknown> {
@@ -2063,6 +2110,7 @@ function ignoredBecause(action: string): string | null {
 async function answerRemote(request: RemoteRequest): Promise<unknown> {
   if (request.command === 'status') return remoteStatus();
   if (request.command === 'record') return remoteRecord(request.args);
+  if (request.command === 'note') return addNote(String(request.args.text ?? ''));
 
   const action = String(request.args.action);
   if (!REMOTE_ACTIONS.includes(action)) return { ok: false, error: `Unknown action "${action}"; use ${REMOTE_ACTIONS.join(', ')}` };
@@ -2351,6 +2399,21 @@ $<HTMLDialogElement>('settings').addEventListener('close', () => {
 });
 
 window.recorder.onHotkey(runAction);
+window.recorder.onNoteFocus(() => $<HTMLInputElement>('note-text').focus());
+window.recorder.onNoteAdd((text) => {
+  const added = addNote(text);
+  if (!added.ok) setStatus(`Note not added: ${added.error}`, 'error');
+});
+$<HTMLFormElement>('note-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const input = $<HTMLInputElement>('note-text');
+  const added = addNote(input.value);
+  if (added.ok) {
+    input.value = '';
+    input.blur();
+    setStatus(`Note added to ${added.step}.`, 'ok');
+  } else setStatus(`Note not added: ${added.error}`, 'error');
+});
 
 window.recorder.onRemoteCommand(async (request) => {
   let result: unknown;

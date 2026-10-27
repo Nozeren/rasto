@@ -71,3 +71,9 @@ button.stop { background: #ff3b30; border-color: #ff3b30; color: #fff; }
 /* Countdown before recording starts */
 body.counting .dot { animation: none; background: #8e8e93; }
 .count { display: inline-block; min-width: 22px; font-size: 16px; line-height: 1; font-weight: 800; color: #ff3b30; font-variant-numeric: tabular-nums; }
+
+/* The note box: a row under the controls while it is open. */
+.row.note { padding: 0 12px 10px; }
+.row.note input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid #3a3a3c; background: #2c2c2e; color: #fff; outline: none; }
+.row.note input:focus { border-color: #0a84ff; }
+.row.note[hidden] { display: none; }

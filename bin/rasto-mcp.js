@@ -55,6 +55,19 @@ const TOOLS = [
     },
   },
   {
+    name: 'rasto_note',
+    description:
+      'Adds a note to the step on screen while recording: it shows above the step label in the video for a few ' +
+      'seconds and is kept under that step in the step log, the History, the HTML report and the TestRail comment. ' +
+      'Use it to say what you are checking or why ("Checking the total is 27.00", "Retrying: the first login timed ' +
+      'out"). One line, up to 500 characters; never put secrets in it.',
+    inputSchema: {
+      type: 'object',
+      properties: { text: { type: 'string', maxLength: 500 } },
+      required: ['text'],
+    },
+  },
+  {
     name: 'rasto_status',
     description:
       'Rasto state: view, kind (guide or cases), recording / paused / compressing, card (the guide card on screen, ' +
@@ -69,6 +82,7 @@ const CALLS = {
   rasto_tabs: () => rasto.tabs(),
   rasto_record: (args) => rasto.record(args),
   rasto_control: (args) => rasto.control(args.action),
+  rasto_note: (args) => rasto.note(args.text),
   rasto_status: () => rasto.status(),
 };
 

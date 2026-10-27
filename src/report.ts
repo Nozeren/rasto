@@ -60,6 +60,11 @@ export async function resultComment(recording: SavedRecording, c: LoggedCase, sp
   if (c.row) lines.push(`Examples row: ${c.row}`);
   lines.push('', 'Steps (time in the video):');
   for (const s of c.steps) lines.push(`- ${formatTime(s.atMs)} · ${s.section} ${s.position}/${s.total}: ${`${s.keyword} ${s.text}`.trim()}`);
+  const notes = c.steps.flatMap((s) => (s.notes ?? []).map((n) => ({ ...n, step: `${s.section} ${s.position}/${s.total}` })));
+  if (notes.length) {
+    lines.push('', 'Notes:');
+    for (const n of notes) lines.push(`- ${formatTime(n.atMs)} · ${n.step}: ${n.text}`);
+  }
 
   const entries = c.steps.flatMap((s) => s.console ?? []);
   if (recording.meta.browserConsole === 'captured') {

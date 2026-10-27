@@ -1,6 +1,6 @@
 /**
  * Remote control: a small HTTP API on 127.0.0.1 so a script or an agent can do what the UI and the hotkeys do: list the
- * windows, start a recording from a feature file, move between steps, close cases and read the state.
+ * windows, start a recording from a feature file, move between steps, add notes, close cases and read the state.
  *
  * Off unless ⚙ Settings → "Allow remote control" is on. While it runs, its port and a random token are written to
  * remote.json in the user-data folder, readable only by the user; every request must send the token. bin/rasto-remote.js
@@ -21,6 +21,8 @@ export interface RemoteHandlers {
   record(body: Record<string, unknown>): Promise<unknown>;
   /** POST /control { action } */
   control(action: string): Promise<unknown>;
+  /** POST /note { text }: a note on the step on screen */
+  note(text: string): Promise<unknown>;
   /** GET /status */
   status(): Promise<unknown>;
 }
@@ -56,6 +58,7 @@ async function route(request: http.IncomingMessage, handlers: RemoteHandlers): P
   if (key === 'GET /tabs') return [200, await handlers.tabs()];
   if (key === 'POST /record') return [200, await handlers.record(await readBody(request))];
   if (key === 'POST /control') return [200, await handlers.control(String((await readBody(request)).action ?? ''))];
+  if (key === 'POST /note') return [200, await handlers.note(String((await readBody(request)).text ?? ''))];
   return [404, { ok: false, error: `Unknown request: ${key}` }];
 }
 
