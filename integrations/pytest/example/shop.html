@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Demo Shop</title>
+<style>
+  body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#f4f5f8;color:#1d2230}
+  header{background:#1d2230;color:#fff;padding:16px 40px;font-weight:800;font-size:20px;display:flex}
+  header span{margin-left:auto;font-size:15px;font-weight:600}
+  main{max-width:640px;margin:40px auto;padding:0 20px}
+  .card{background:#fff;border-radius:14px;padding:24px;box-shadow:0 2px 10px #0001}
+  button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:11px 20px;background:#3b6cff;color:#fff;margin-top:14px}
+  label{display:block;margin:10px 0} input[type=text]{font:inherit;width:100%;padding:10px;border:2px solid #d4d7e1;border-radius:9px;box-sizing:border-box}
+  .error{background:#ffecec;color:#b3141b;border-radius:10px;padding:12px;margin-top:14px} [hidden]{display:none!important}
+</style></head>
+<body>
+<header>Demo Shop <span id="cart">Cart · 0</span></header>
+<main><div class="card">
+  <section id="shop">
+    <h1>Notebooks</h1>
+    <label>How many <input id="quantity" type="text" value="1"></label>
+    <button id="add">Add to cart</button>
+  </section>
+  <section id="pay" hidden>
+    <h1>Payment</h1>
+    <label><input type="radio" name="method" value="card" checked> Credit card</label>
+    <label><input type="radio" name="method" value="paypal"> PayPal</label>
+    <label>Name on card <input id="name" type="text"></label>
+    <button id="pay-now">Pay now</button>
+    <div id="error" class="error" hidden>Something went wrong. Please try again.</div>
+  </section>
+  <section id="done" hidden><h1>Order confirmed!</h1><p>A receipt is on its way.</p></section>
+</div></main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('add').onclick = () => {
+    $('cart').textContent = 'Cart · ' + $('quantity').value;
+    $('shop').hidden = true; $('pay').hidden = false;
+  };
+  $('pay-now').onclick = () => {
+    if (document.querySelector('[name=method]:checked').value === 'paypal') {
+      console.error('PaymentError: PayPal session expired');
+      $('error').hidden = false;
+      return;
+    }
+    $('pay').hidden = true; $('done').hidden = false;
+  };
+</script>
+</body></html>
