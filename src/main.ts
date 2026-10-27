@@ -177,6 +177,7 @@ ipcMain.handle('screencast-start', async (_event, tabId: string) => {
       tabId,
       (frame) => mainWindow?.webContents.send('browser-frame', frame),
       settings.preferences.showInput ? (event) => mainWindow?.webContents.send('browser-input', event) : undefined,
+      settings.preferences.blurSensitive ? (rects) => mainWindow?.webContents.send('browser-blur', rects) : undefined,
     );
     return { ok: true };
   } catch (error) {

@@ -96,6 +96,9 @@ let tabFrame: HTMLImageElement | null = null;
 let tabStreaming = false;
 /** The tab's viewport in CSS pixels (from the last frame), to place clicks on the canvas. */
 let tabViewport = { width: 0, height: 0 };
+/** The recorded tab's sensitive fields (viewport CSS px), pixelated on every frame; see screencast.ts. */
+let blurRects: [number, number, number, number][] = [];
+const blurCanvas = document.createElement('canvas');
 /** Clicks being drawn as ripples, and the label of the last click or typing (screencast.ts inputTracker). */
 let inputRipples: { x: number; y: number; at: number }[] = [];
 let inputLabel: { text: string; until: number } | null = null;
@@ -600,6 +603,7 @@ function stopPreview(): void {
   tabFrame = null;
   inputRipples = [];
   inputLabel = null;
+  blurRects = [];
 }
 
 let firstFrame: (() => void) | null = null;
@@ -654,6 +658,41 @@ function dodgeCard(x: number, y: number): void {
   const under = cx > cardRect.x - margin && cx < cardRect.x + cardRect.w + margin && cy > cardRect.y - margin && cy < cardRect.y + cardRect.h + margin;
   if (under) cardCorner = (cardCorner ?? settings?.preferences.labelCorner ?? 'left') === 'left' ? 'right' : 'left';
 }
+
+/**
+ * Pixelates the sensitive fields: each area (plus a margin, so a field that just moved stays covered) is shrunk to
+ * blocks of about 12 px and drawn back without smoothing. Nothing of the original pixels is kept in the video.
+ */
+function drawBlur(width: number, height: number): void {
+  if (!blurRects.length || !tabViewport.width) return;
+  const sx = width / tabViewport.width;
+  const sy = height / tabViewport.height;
+  const margin = 6 * sx;
+  const block = Math.max(8, Math.round(12 * sx));
+  const bctx = blurCanvas.getContext('2d');
+  if (!bctx) return;
+  for (const [x, y, w, h] of blurRects) {
+    const left = Math.max(0, Math.floor(x * sx - margin));
+    const top = Math.max(0, Math.floor(y * sy - margin));
+    const right = Math.min(width, Math.ceil((x + w) * sx + margin));
+    const bottom = Math.min(height, Math.ceil((y + h) * sy + margin));
+    const bw = right - left;
+    const bh = bottom - top;
+    if (bw < 2 || bh < 2) continue;
+    blurCanvas.width = Math.max(1, Math.round(bw / block));
+    blurCanvas.height = Math.max(1, Math.round(bh / block));
+    bctx.imageSmoothingEnabled = true;
+    bctx.drawImage(canvasEl, left, top, bw, bh, 0, 0, blurCanvas.width, blurCanvas.height);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(blurCanvas, 0, 0, blurCanvas.width, blurCanvas.height, left, top, bw, bh);
+    ctx.restore();
+  }
+}
+
+window.recorder.onBlurRects((rects) => {
+  if (tabStreaming) blurRects = rects;
+});
 
 /** Ripples where the tab was clicked (under the banner). */
 function drawRipples(width: number, height: number): void {
@@ -1091,6 +1130,7 @@ function drawFrame(): void {
   if (tabStreaming) {
     if (!tabFrame) return;
     ctx.drawImage(tabFrame, 0, 0, canvasEl.width, canvasEl.height);
+    drawBlur(canvasEl.width, canvasEl.height);
     drawRipples(canvasEl.width, canvasEl.height);
   } else {
     if (sourceVideo.readyState < 2) return;
@@ -2141,6 +2181,7 @@ async function openSettings(): Promise<void> {
   $<HTMLInputElement>('browser-port').value = String(settings.preferences.browserPort);
   $<HTMLInputElement>('pref-clips').checked = settings.preferences.clips;
   $<HTMLInputElement>('pref-input').checked = settings.preferences.showInput;
+  $<HTMLInputElement>('pref-blur').checked = settings.preferences.blurSensitive;
   $<HTMLInputElement>('failure-clip').value = String(settings.preferences.failureClipSec);
   showTestRailInfo(await window.recorder.getTestRail());
   $<HTMLDialogElement>('settings').showModal();
@@ -2308,6 +2349,11 @@ $<HTMLInputElement>('pref-remote').addEventListener('change', async (event) => {
 });
 $<HTMLInputElement>('pref-console').addEventListener('change', async (event) => {
   settings = await window.recorder.setPreferences({ browserConsole: (event.target as HTMLInputElement).checked });
+});
+$<HTMLInputElement>('pref-blur').addEventListener('change', async (event) => {
+  settings = await window.recorder.setPreferences({ blurSensitive: (event.target as HTMLInputElement).checked });
+  // The tab being previewed picks it up when its stream restarts.
+  if (tabStreaming && !isRecording()) void startPreview();
 });
 $<HTMLInputElement>('pref-input').addEventListener('change', async (event) => {
   settings = await window.recorder.setPreferences({ showInput: (event.target as HTMLInputElement).checked });

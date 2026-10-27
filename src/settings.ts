@@ -38,6 +38,8 @@ export interface Preferences {
   failureClipSec: number;
   /** The bottom corner of the step label in the video; a tab recording moves it out of the way of clicks. */
   labelCorner: 'left' | 'right';
+  /** Tab recordings: pixelate password, card and other secret-looking fields (and data-rasto-blur) in the video. */
+  blurSensitive: boolean;
   /** The browser's --remote-debugging-port: console, network, and recording a headless browser's tab. */
   browserPort: number;
 }
@@ -80,6 +82,7 @@ export const DEFAULT_SETTINGS: Settings = {
     clips: true,
     failureClipSec: 20,
     labelCorner: 'left',
+    blurSensitive: true,
   },
   recent: { subjects: [], configs: [] },
   testrail: { url: '', user: '', apiKeyEncrypted: '' },

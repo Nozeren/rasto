@@ -11,6 +11,9 @@
  * and the page's DOM is left untouched; only its events are read. Password and secret-looking fields are masked
  * (always ••••••, so not even their length shows). Input inside iframes is not tracked.
  *
+ * The same listener reports where the sensitive fields are (passwords, card fields, anything marked data-rasto-blur), and
+ * the renderer pixelates those parts of the frame before they reach the video.
+ *
  * A listener can't be removed once its connection is closed, and the next connection's binding reaches every world of
  * that name, so each screencast's listener carries its own token and only reports with it are taken. Otherwise a tab
  * previewed and then recorded would report every click twice.
@@ -83,18 +86,50 @@ export const inputTracker = (token: string): string => `(() => {
     const keys = [event.ctrlKey && 'Ctrl', event.metaKey && 'Cmd', event.altKey && 'Alt', event.shiftKey && modifier && 'Shift', event.key.length === 1 ? event.key.toUpperCase() : event.key];
     send({ kind: 'key', text: keys.filter(Boolean).join('+') });
   }, true);
+
+  // Where the sensitive fields are on screen, so the video can blur them: secret-looking fields (as above), card
+  // fields, and anything the page marks with data-rasto-blur or class rasto-blur. Sent when it changes: on scroll and
+  // resize at once, else checked every 200 ms.
+  const sensitive = (el) => el.matches('[data-rasto-blur], .rasto-blur')
+    || ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && (secret(el) || /^cc-/.test(el.autocomplete || '')));
+  let lastRects = '';
+  const reportRects = () => {
+    const rects = [];
+    for (const el of document.querySelectorAll('input, textarea, [data-rasto-blur], .rasto-blur')) {
+      if (!sensitive(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
+      rects.push([Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]);
+      if (rects.length >= 50) break;
+    }
+    const key = JSON.stringify(rects);
+    if (key === lastRects) return;
+    lastRects = key;
+    send({ kind: 'blur', rects });
+  };
+  addEventListener('scroll', reportRects, true);
+  addEventListener('resize', reportRects);
+  setInterval(reportRects, 200);
+  reportRects();
 })();`;
 
 const MAX_SIZE = { maxWidth: 1920, maxHeight: 1080 };
 
 let connection: DevTools | null = null;
 
-/** Starts streaming the tab `tabId` of the browser on `port`; `onFrame` gets every frame, `onInput` the clicks and typing. */
+/** Sensitive fields to blur, as [x, y, width, height] in CSS pixels of the viewport. */
+export type BlurRects = [number, number, number, number][];
+
+/**
+ * Starts streaming the tab `tabId` of the browser on `port`; `onFrame` gets every frame, `onInput` the clicks and typing,
+ * `onBlur` where the sensitive fields are whenever that changes.
+ */
 export async function startScreencast(
   port: number,
   tabId: string,
   onFrame: (frame: Frame) => void,
   onInput?: (event: InputEvent) => void,
+  onBlur?: (rects: BlurRects) => void,
 ): Promise<void> {
   stopScreencast();
   const tab = (await listTabs(port)).find((t) => t.id === tabId);
@@ -105,10 +140,11 @@ export async function startScreencast(
   devtools.onEvent((method, params) => {
     if (method === 'Runtime.bindingCalled' && params.name === BINDING) {
       try {
-        const { token: from, ...event } = JSON.parse(params.payload) as InputEvent & { token?: string };
+        const { token: from, ...event } = JSON.parse(params.payload) as (InputEvent | { kind: 'blur'; rects: BlurRects }) & { token?: string };
         // A listener left by an earlier screencast of this tab.
         if (from !== token) return;
-        onInput?.(event);
+        if (event.kind === 'blur') onBlur?.(event.rects);
+        else onInput?.(event);
       } catch {
         // not ours
       }
@@ -121,7 +157,7 @@ export async function startScreencast(
   });
   connection = devtools;
   await devtools.send('Page.enable');
-  if (onInput) await trackInput(devtools, token);
+  if (onInput || onBlur) await trackInput(devtools, token);
   await devtools.send('Page.startScreencast', { format: 'jpeg', quality: 85, everyNthFrame: 1, ...MAX_SIZE });
   // A still page sends one frame and then nothing: ask for a fresh one so the preview starts at once.
   await devtools.send('Page.bringToFront').catch(() => undefined);

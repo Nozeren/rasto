@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('recorder', {
   onInput: (callback: (event: unknown) => void) => {
     ipcRenderer.on('browser-input', (_event, input) => callback(input));
   },
+  onBlurRects: (callback: (rects: unknown) => void) => {
+    ipcRenderer.on('browser-blur', (_event, rects) => callback(rects));
+  },
   setOutput: (output: unknown) => ipcRenderer.invoke('set-output', output),
   chooseOutputRoot: () => ipcRenderer.invoke('choose-output-root'),
   setPreferences: (preferences: unknown) => ipcRenderer.invoke('set-preferences', preferences),
