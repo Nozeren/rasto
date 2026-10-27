@@ -232,6 +232,14 @@ async function run() {
     ${$('paste-use')}.click(); await new Promise((r) => setTimeout(r, 600));
     if (!${$('add-all-rows')}.hidden) ${$('add-all-rows')}.click();
     const details = document.querySelector('#case-card details'); if (details) details.open = true;` });
+  await shot('source', { delay: 2000, js: `
+    document.querySelector('[data-goto="source"]').click(); ${$('refresh-sources')}.click();
+    await new Promise((r) => setTimeout(r, 1500));
+    document.querySelector('#sources > *').click();` });
+  await shot('save', { js: `
+    document.querySelector('[data-goto="save"]').click();
+    ${$('out-run')}.value = 'R100'; ${$('out-run')}.dispatchEvent(new Event('input'));` });
+
   // The real run. A tab recording has no HUD, so it is opened by hand to be captured.
   await remote('record', path.join(FIXTURES, 'checkout.feature'), '--tab', 'Demo Shop', '--subject', 'checkout', '--config', 'staging_chrome');
   await wait(800);
@@ -256,18 +264,6 @@ async function run() {
     ${$('open-settings')}.click(); await new Promise((r) => setTimeout(r, 300));
     [...document.querySelectorAll('#settings h3, #settings h4, #settings .section-title, #settings legend')]
       .find((h) => /recording/i.test(h.textContent))?.scrollIntoView();` });
-
-
-  // Picking the tab in ② before the run would leave its preview attached during the recording, so these come after.
-  await shop.evaluate("setup(1, 'card')");
-  await mainWindow().webContents.executeJavaScript(`${$('settings')}.close(); document.querySelector('[data-goto="cases"]').click();`);
-  await shot('source', { delay: 2000, js: `
-    document.querySelector('[data-goto="source"]').click(); ${$('refresh-sources')}.click();
-    await new Promise((r) => setTimeout(r, 1500));
-    document.querySelector('#sources > *').click();` });
-  await shot('save', { js: `
-    document.querySelector('[data-goto="save"]').click();
-    ${$('out-run')}.value = 'R100'; ${$('out-run')}.dispatchEvent(new Event('input'));` });
 
   shop.close();
 

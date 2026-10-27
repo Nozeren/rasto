@@ -6,11 +6,16 @@
  * Frames only come when the page changes; the renderer keeps drawing the last one.
  *
  * A headless tab has no mouse pointer, so clicks and typing would be invisible: given `onInput`, a small listener
- * reports them (INPUT_TRACKER) and the renderer draws a ripple where the click landed and a label for what was typed.
+ * reports them (inputTracker) and the renderer draws a ripple where the click landed and a label for what was typed.
  * The listener runs in an isolated world (like an extension's content script): the page's own scripts can't see it,
  * and the page's DOM is left untouched; only its events are read. Password and secret-looking fields are masked
  * (always ••••••, so not even their length shows). Input inside iframes is not tracked.
+ *
+ * A listener can't be removed once its connection is closed, and the next connection's binding reaches every world of
+ * that name, so each screencast's listener carries its own token and only reports with it are taken. Otherwise a tab
+ * previewed and then recorded would report every click twice.
  */
+import { randomBytes } from 'crypto';
 import { DevTools, listTabs } from './devtools';
 
 export interface Frame {
@@ -35,11 +40,11 @@ export interface InputEvent {
 const WORLD = 'rasto-input';
 const BINDING = '__rastoInput';
 
-/** Runs in the isolated world of every document of the tab; reports through the binding. */
-export const INPUT_TRACKER = `(() => {
-  if (globalThis.__rastoInputInstalled) return;
-  globalThis.__rastoInputInstalled = true;
-  const send = (event) => { try { ${BINDING}(JSON.stringify(event)); } catch {} };
+/** Runs in the isolated world of every document of the tab; reports through the binding, tagged with `token`. */
+export const inputTracker = (token: string): string => `(() => {
+  if (globalThis.__rastoInput_${token}) return;
+  globalThis.__rastoInput_${token} = true;
+  const send = (event) => { try { ${BINDING}(JSON.stringify({ ...event, token: '${token}' })); } catch {} };
   const clean = (text, max = 60) => {
     const one = String(text ?? '').replace(/\\s+/g, ' ').trim();
     return one.length > max ? one.slice(0, max - 1) + '…' : one;
@@ -96,10 +101,14 @@ export async function startScreencast(
   if (!tab) throw new Error('that tab is gone: list the tabs again');
 
   const devtools = await DevTools.connect(tab.webSocketDebuggerUrl);
+  const token = randomBytes(8).toString('hex');
   devtools.onEvent((method, params) => {
     if (method === 'Runtime.bindingCalled' && params.name === BINDING) {
       try {
-        onInput?.(JSON.parse(params.payload) as InputEvent);
+        const { token: from, ...event } = JSON.parse(params.payload) as InputEvent & { token?: string };
+        // A listener left by an earlier screencast of this tab.
+        if (from !== token) return;
+        onInput?.(event);
       } catch {
         // not ours
       }
@@ -112,20 +121,21 @@ export async function startScreencast(
   });
   connection = devtools;
   await devtools.send('Page.enable');
-  if (onInput) await trackInput(devtools);
+  if (onInput) await trackInput(devtools, token);
   await devtools.send('Page.startScreencast', { format: 'jpeg', quality: 85, everyNthFrame: 1, ...MAX_SIZE });
   // A still page sends one frame and then nothing: ask for a fresh one so the preview starts at once.
   await devtools.send('Page.bringToFront').catch(() => undefined);
 }
 
-/** Installs INPUT_TRACKER in the isolated world of the current document and of every document the tab loads next. */
-async function trackInput(devtools: DevTools): Promise<void> {
+/** Installs inputTracker in the isolated world of the current document and of every document the tab loads next. */
+async function trackInput(devtools: DevTools, token: string): Promise<void> {
+  const source = inputTracker(token);
   await devtools.send('Runtime.enable');
   await devtools.send('Runtime.addBinding', { name: BINDING, executionContextName: WORLD });
-  await devtools.send('Page.addScriptToEvaluateOnNewDocument', { source: INPUT_TRACKER, worldName: WORLD });
+  await devtools.send('Page.addScriptToEvaluateOnNewDocument', { source, worldName: WORLD });
   const { frameTree } = await devtools.send('Page.getFrameTree');
   const { executionContextId } = await devtools.send('Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: WORLD });
-  await devtools.send('Runtime.evaluate', { expression: INPUT_TRACKER, contextId: executionContextId });
+  await devtools.send('Runtime.evaluate', { expression: source, contextId: executionContextId });
 }
 
 export function stopScreencast(): void {
