@@ -93,7 +93,7 @@ let tabFrame: HTMLImageElement | null = null;
 let tabStreaming = false;
 /** The tab's viewport in CSS pixels (from the last frame), to place clicks on the canvas. */
 let tabViewport = { width: 0, height: 0 };
-/** Clicks being drawn as ripples, and the label of the last click or typing (screencast.ts INPUT_TRACKER). */
+/** Clicks being drawn as ripples, and the label of the last click or typing (screencast.ts inputTracker). */
 let inputRipples: { x: number; y: number; at: number }[] = [];
 let inputLabel: { text: string; until: number } | null = null;
 const RIPPLE_MS = 700;
