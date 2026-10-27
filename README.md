@@ -22,8 +22,9 @@ happened, with no video editing.**
 - **A step log** next to the video, with each step's time, so a reviewer can jump straight to it. The steps are also
   chapters and subtitles of the MP4.
 - **Clips:** one per case, and the last seconds before every Fail.
-- **A shareable report:** one `.html` per recording with the video inside, every step and what happened during it.
-  Send it to anyone; it opens offline in any browser.
+- **A shareable report:** one `.html` per recording that opens with what went wrong and the errors before it, then the
+  video, every step and what happened during it, with the `.har` and step log inside. Send the one file to a developer;
+  it opens offline in any browser.
 - **Console and network:** with Chrome or Edge started with a debugging port, the page's console errors go under each
   step and its network into a `.har`, secrets redacted.
 - **Posts the results to TestRail**, with the steps, clips and logs attached.
@@ -225,11 +226,15 @@ recording has no HUD and no countdown (see *Headless recording*).
 are its numbered steps), so VLC, QuickTime, IINA, mpv and video sites list the steps and jump to them, and the same
 text is a subtitle track (`Steps`) that can be turned on in any player. The file explains itself without Rasto.
 
-**Report.** The `.html` is self-contained: send it by chat or email and it opens offline in any browser. It has the
-video (embedded up to 25 MB; a longer one plays from the `.mp4` next to it, so send both), each case with its result,
-and every step with its time: click a time to jump the video there. Under each step: the clicks and typing, the console
-errors and warnings and the failed requests while it was on screen. It shows only what the step log and the `.har`
-hold, so secrets stay masked, and text from the page under test can't run in it.
+**Report.** The `.html` is the one file to send to a developer: it opens offline in any browser, no Rasto needed. It
+starts with **what went wrong**: each failed or blocked case, the step it failed on, and the console errors and failed
+requests before it (the cause often shows a step or two earlier), with **Watch the failure** to play the moments before
+it. Below, the video sits beside the steps (passed cases folded): click any time to jump the video there; under each
+step are its clicks and typing, console errors and warnings and failed requests. **Copy summary** copies the cases,
+steps and errors as plain text for a ticket, and **Files** has the step log and the `.har` inside the report, to
+download (a `.har` over 15 MB stays next to the video). The video is embedded up to 25 MB; a longer one plays from the
+`.mp4`, so send that too. It shows only what the step log and the `.har` hold, so secrets stay masked, and text from the
+page under test can't run in it.
 
 **Clips.** With several cases in a run, each case also gets its own MP4, from its first step to its result (the
 2-second result flash included). Every failed case also gets the last seconds before **Fail** as its own clip, the
