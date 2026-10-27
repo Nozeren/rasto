@@ -14,7 +14,8 @@
     "icon": "electron scripts/render-icon.js",
     "dist": "npm run build && electron-builder --mac --publish never",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never"
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "screenshots": "npm run build && electron scripts/screenshots.js"
   },
   "dependencies": {
     "ffmpeg-static": "^5.2.0",

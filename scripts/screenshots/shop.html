@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Demo Shop</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;font:16px/1.4 system-ui,"Red Hat Text",sans-serif;background:#f4f5f8;color:#1d2230}
+  header{background:#1d2230;color:#fff;padding:16px 40px;display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px}
+  header .cart{margin-left:auto;font-weight:600;font-size:15px;background:#ffffff1a;padding:6px 14px;border-radius:999px}
+  main{max-width:760px;margin:40px auto;padding:0 20px}
+  h1{font-size:28px;margin:0 0 20px}
+  .card{background:#fff;border-radius:14px;padding:24px;box-shadow:0 2px 10px #0001;margin-bottom:16px}
+  .item{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee}
+  .item:last-child{border:0} .total{font-weight:800;font-size:20px;text-align:right;margin-top:10px}
+  button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 22px;background:#3b6cff;color:#fff;cursor:pointer}
+  label{display:block;font-weight:600;margin:14px 0 6px} input{font:inherit;width:100%;padding:11px 12px;border:2px solid #d4d7e1;border-radius:9px}
+  .methods{display:flex;gap:10px;margin:10px 0 18px} .methods span{padding:9px 16px;border-radius:9px;border:2px solid #d4d7e1;font-weight:600}
+  .methods span.on{border-color:#3b6cff;background:#eef2ff}
+  .ok{color:#14a44d;font-size:60px;text-align:center} .err{background:#ffecec;color:#b3141b;border-radius:10px;padding:14px 16px;font-weight:600}
+  [hidden]{display:none!important}
+</style></head>
+<body>
+<header>Demo Shop <span class="cart" id="badge">Cart · 0</span></header>
+<main>
+  <section id="home"><h1>Welcome back, Alex</h1><div class="card">Fresh picks for you: notebooks, pens and coffee.</div>
+    <button id="open-cart">Open cart</button></section>
+  <section id="cart" hidden><h1>Your cart</h1><div class="card" id="items"></div><button id="checkout">Checkout</button></section>
+  <section id="pay" hidden><h1>Payment</h1><div class="card">
+    <div class="methods"><span id="m-card">Credit card</span><span id="m-paypal">PayPal</span></div>
+    <label>Name on card</label><input id="name" autocomplete="off">
+    <label>Card number</label><input id="number" autocomplete="off">
+    <div id="error" class="err" hidden style="margin-top:16px"></div>
+    <div style="margin-top:18px"><button id="pay-btn">Pay now</button></div></div></section>
+  <section id="done" hidden><div class="card" style="text-align:center"><div class="ok">✓</div><h1>Order confirmed!</h1>
+    <p>Order #48213 · a receipt is on its way to alex@example.com</p></div></section>
+</main>
+<script>
+  const all = ['Notebook', 'Fountain pen', 'Coffee beans'];
+  const show = (id) => ['home', 'cart', 'pay', 'done'].forEach((s) => (document.getElementById(s).hidden = s !== id));
+  let n = Number(new URLSearchParams(location.search).get('items') || 1), method = 'card';
+  window.setup = (items, m) => { api('me'); api('cart/count'); n = items; method = m; document.getElementById('badge').textContent = 'Cart · ' + n; show('home');
+    document.getElementById('error').hidden = true; document.getElementById('name').value = ''; document.getElementById('number').value = ''; };
+  const api = (path, opts) => fetch('/api/' + path, opts).catch(() => {});
+  document.getElementById('open-cart').onclick = () => {
+    api('cart'); api('recommendations?limit=4');
+    const prices = [4.5, 18, 9.9];
+    document.getElementById('items').innerHTML = all.slice(0, n).map((x, i) => `<div class="item"><span>${x}</span><span>€${prices[i].toFixed(2)}</span></div>`).join('')
+      + `<div class="total">Total €${prices.slice(0, n).reduce((a, b) => a + b, 0).toFixed(2)}</div>`;
+    show('cart');
+  };
+  document.getElementById('checkout').onclick = () => {
+    api('payment-methods'); api('shipping/estimate');
+    show('pay');
+    document.getElementById('m-card').className = method === 'card' ? 'on' : '';
+    document.getElementById('m-paypal').className = method === 'paypal' ? 'on' : '';
+  };
+  document.getElementById('pay-btn').onclick = () => {
+    api('orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: n, method }) });
+    if (method === 'paypal') {
+      console.error('PaymentError: PayPal session expired (code 419)');
+      console.warn('Retrying payment provider handshake…');
+      const e = document.getElementById('error'); e.hidden = false; e.textContent = 'Something went wrong. Please try again.';
+      return;
+    }
+    show('done');
+  };
+</script>
+</body></html>

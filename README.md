@@ -412,6 +412,10 @@ check layout changes.
 
 `npm run icon` re-renders `build/icon.png` from `build/icon.svg`.
 
+`npm run screenshots` regenerates the README images (`docs/screenshots/*.png` and `docs/demo.gif`): it records a real
+run of a demo shop in a headless Chrome (set `CHROME_PATH` if it isn't found) with a throwaway profile, so nothing of
+your settings, recordings or desktop appears. The shop and its cases are in `scripts/screenshots/`.
+
 ## Scopes
 
 | # | Scope | Status |
