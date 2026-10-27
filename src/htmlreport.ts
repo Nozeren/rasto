@@ -125,14 +125,18 @@ export function reportHtml(log: StepLog, videoSrc: string, requests: HistoryRequ
   :root{--bg:#f6f7f9;--card:#fff;--ink:#1f2328;--muted:#656d76;--line:#d8dee4;--accent:#0969da;--pass:#1a7f37;--fail:#cf222e;--blocked:#bc4c00;--warn:#9a6700}
   @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--ink:#e6edf3;--muted:#8d96a0;--line:#30363d;--accent:#4493f8;--pass:#3fb950;--fail:#f85149;--blocked:#db6d28;--warn:#d29922}}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-  main{max-width:1000px;margin:0 auto;padding:24px 16px 60px}
+  main{max-width:1440px;margin:0 auto;padding:24px 16px 60px}
   header .brand{color:var(--muted);font-size:13px;font-weight:600} h1{font-size:22px;margin:4px 0 6px;word-break:break-all}
   .meta{color:var(--muted);font-size:14px} .chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px}
   .pill,.chip{display:inline-block;border-radius:99px;padding:2px 10px;font-size:13px;font-weight:700;border:1px solid var(--line)}
   .pill.pass{color:var(--pass);border-color:var(--pass)} .pill.fail{color:var(--fail);border-color:var(--fail)} .pill.blocked,.pill.incomplete{color:var(--blocked);border-color:var(--blocked)}
   .chip.err{color:var(--fail)}
-  video{width:100%;border-radius:10px;background:#000;display:block;position:sticky;top:0;z-index:1}
-  h2{font-size:17px;margin:26px 0 8px} section.case{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:14px 0}
+    /* The video stays in view while the steps scroll: beside them on a wide screen, above them (capped) on a narrow one. */
+  .layout{display:grid;grid-template-columns:minmax(0,1fr);gap:0 24px;align-items:start}
+  .player{position:sticky;top:0;z-index:1;background:var(--bg);padding:8px 0}
+  video{width:100%;max-height:40vh;border-radius:10px;background:#000;display:block}
+  @media (min-width:1100px){.layout{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)} .player{top:16px;padding:0} video{max-height:calc(100vh - 32px)}}
+  h2{font-size:17px;margin:26px 0 8px} section.case{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 14px}
   .case-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .case-head b{font-family:ui-monospace,monospace}
   ul{list-style:none;margin:0;padding:0} .step{border-top:1px solid var(--line);padding:7px 0} .step:first-child{border-top:0}
   .row{display:flex;gap:12px;align-items:baseline} .label{color:var(--muted);font-size:13px;min-width:92px} .text{flex:1}
@@ -148,12 +152,16 @@ export function reportHtml(log: StepLog, videoSrc: string, requests: HistoryRequ
 <header><div class="brand">● Rasto report</div><h1>${escape(log.video)}</h1>
 <div class="meta">${escape(log.subject)} / ${escape(log.config)} · ${escape(isNaN(started.getTime()) ? log.startedAt : started.toLocaleString('en-GB'))} · ${escape(log.duration)}</div>
 <div class="chips">${chips}</div></header>
-<video id="video" controls preload="metadata" src="${escape(videoSrc)}"></video>
+<div class="layout">
+<div class="player"><video id="video" controls preload="metadata" src="${escape(videoSrc)}"></video></div>
+<div class="steps">
 ${log.cases.map((c) => `<section class="case">
   <div class="case-head"><span class="pill ${escape(c.result)}">${escape(RESULT_LABEL[c.result] ?? c.result)}</span><b>${escape(caseName(c))}</b><span>${escape(c.title)}</span></div>
   <ul>${c.steps.map((s) => stepHtml(s, byStep.get(s) ?? [])).join('')}</ul>
 </section>`).join('')}
 ${clips}
+</div>
+</div>
 <footer>Made by Rasto from ${escape(log.video.replace(/\.mp4$/, '.json'))}${network ? ` and ${escape(network.har)}` : ''}. Click a time to jump the video there.</footer>
 </main>
 <script>
@@ -164,8 +172,8 @@ ${clips}
     if (!button) return;
     video.currentTime = Number(button.dataset.t);
     end = button.dataset.end ? Number(button.dataset.end) : null;
+    // The video is always in view (it stays put while the steps scroll), so the page doesn't move.
     video.play().catch(() => {});
-    video.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
   // A clip plays from its start to its end; the current step is highlighted as the video plays.
   const steps = [...document.querySelectorAll('li.step')].map((li) => ({ li, t: Number(li.querySelector('button.t').dataset.t) })).sort((a, b) => a.t - b.t);
