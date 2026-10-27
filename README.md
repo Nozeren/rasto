@@ -1,4 +1,9 @@
-# Rasto
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/wordmark-dark.png">
+    <img src="docs/wordmark-light.png" alt="Rasto" width="300">
+  </picture>
+</h1>
 
 **Every manual test leaves a trail: a short, step-labelled video and a log that prove what you tested, where, and what
 happened, with no video editing.**
@@ -411,7 +416,13 @@ and quits. `RASTO_SNAPSHOT_JS='…'` runs script in the page first (e.g. load a 
 `RASTO_SNAPSHOT_DELAY=ms` sets the waits, and `RASTO_SNAPSHOT_TARGET=hud` captures the recording HUD instead. Handy to
 check layout changes.
 
-`npm run icon` re-renders `build/icon.png` from `build/icon.svg`.
+`npm run icon` re-renders `build/icon.png` from `build/icon.svg`. The README wordmark (`docs/wordmark-dark.png`,
+`docs/wordmark-light.png`) is drawn by `build/wordmark.html`, one screenshot per theme:
+
+```bash
+google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 --force-device-scale-factor=2 \
+  --window-size=640,400 --screenshot=wordmark.png "file://$PWD/build/wordmark.html?theme=dark"   # then trim the margins
+```
 
 **CI and releases.** Every pull request is typechecked and built (`.github/workflows/ci.yml`). To publish a release,
 set the version in `package.json`, commit, and push a tag that matches it:
