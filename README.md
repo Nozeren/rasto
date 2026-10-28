@@ -297,6 +297,14 @@ Cases without an id or without a result are skipped, and an error for one case (
 others. Leave the field empty to post nothing. It uses the TestRail access in ⚙ Settings; the user needs permission to
 add results to the run.
 
+## Sending to Rumo
+
+[Rumo](https://github.com/Nozeren/rumo) is BDD test management that reads your feature files. In ⚙ Settings → Rumo,
+give its address, the project (`shop` for `/p/shop`) and an API token from your Rumo account page; the token is
+stored encrypted in the system keychain. After a recording is saved, **Send to Rumo** on the Done screen turns it into
+a run there: each case finds its scenario by its `@C<id>` tag (and its Examples row by the first value), gets its
+result with the notes you made, and has its clip attached (or the whole video).
+
 ## Guides
 
 Besides test cases, Rasto records **guides**: how-to videos with numbered steps instead of Given / When / Then. A guide is

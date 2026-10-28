@@ -86,6 +86,7 @@ let runTests: RunTest[] = [];
 /** The TestRail run last loaded (R100): step ③ offers to post the results to it. */
 let loadedRunId: number | null = null;
 /** How posting the last recording to TestRail went, for the Done screen and the remote status. */
+let rumoOutcome: { state: 'posting' } | { state: 'error'; error: string } | ({ state: 'done' } & Extract<RumoPostResult, { ok: true }>) | null = null;
 let testrailOutcome: { state: 'posting' | 'done' | 'error'; run: string; cases?: TestRailCaseOutcome[]; error?: string } | null = null;
 let queue: ActiveCase[] = [];
 
@@ -1592,12 +1593,15 @@ async function finishRecording(): Promise<void> {
 
   testrailOutcome = null;
   renderTestRail();
+  rumoOutcome = null;
+  void renderRumo();
   $<HTMLButtonElement>('record-again').hidden = false;
   compressing = true;
   await chunkWrites;
   const result = await window.recorder.saveRecording(meta);
   compressing = false;
   await showSaveResult(result, meta);
+  await renderRumo();
   const run = $<HTMLInputElement>('out-run').value.trim();
   if (result.ok && run && !loggedCases.some((c) => c.guide)) await postToTestRail(run);
 }
@@ -1668,6 +1672,44 @@ function renderTestRail(): void {
   }
 }
 
+/** The recording just saved, sent to Rumo as a run: a button until it is sent, then how it went. */
+async function renderRumo(): Promise<void> {
+  const box = $<HTMLDivElement>('done-rumo');
+  box.innerHTML = '';
+  const info = await window.recorder.getRumo();
+  const ready = !!(info.url && info.project && info.hasToken) && !!lastSavedPath && !loggedCases.some((c) => c.guide);
+  box.hidden = !ready && !rumoOutcome;
+  if (box.hidden) return;
+
+  if (!rumoOutcome || rumoOutcome.state === 'error') {
+    const send = el('button', '', rumoOutcome ? 'Try again' : `Send to Rumo (${info.project})`);
+    send.type = 'button';
+    send.addEventListener('click', () => void sendToRumo());
+    if (rumoOutcome) box.append(el('div', 'label', 'Rumo: not sent'), el('div', 'error', rumoOutcome.error));
+    box.append(send);
+    return;
+  }
+  if (rumoOutcome.state === 'posting') {
+    box.append(el('div', 'label', 'Sending to Rumo…'));
+    return;
+  }
+  const { recorded, unmatched, runUrl } = rumoOutcome;
+  box.append(el('div', 'label', `Rumo: ${recorded} result${recorded === 1 ? '' : 's'} recorded`));
+  if (unmatched.length) box.append(el('div', 'error', `No scenario in Rumo for: ${unmatched.join(', ')}`));
+  const open = el('button', 'link', 'Open the run in Rumo');
+  open.type = 'button';
+  open.addEventListener('click', () => void window.recorder.openRumoRun(runUrl));
+  box.append(open);
+}
+
+async function sendToRumo(): Promise<void> {
+  rumoOutcome = { state: 'posting' };
+  await renderRumo();
+  const result = await window.recorder.rumoPost();
+  rumoOutcome = result.ok ? { state: 'done', ...result } : { state: 'error', error: result.error };
+  await renderRumo();
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Recordings left by a crash (unsaved.ts): offered on the Cases screen, saved the usual way or discarded
 
@@ -1699,6 +1741,8 @@ async function recoverUnsaved(u: UnsavedRecording): Promise<void> {
   loggedCases = [];
   testrailOutcome = null;
   renderTestRail();
+  rumoOutcome = null;
+  void renderRumo();
   showView('done');
   $<HTMLDivElement>('done-icon').textContent = '⏳';
   $<HTMLDivElement>('done-title').textContent = `Saving the unfinished recording (${formatDuration(u.durationMs)})…`;
@@ -2284,6 +2328,36 @@ async function saveTestRail(): Promise<boolean> {
   return result.ok;
 }
 
+function showRumoInfo(info: RumoInfo, message = '', kind: 'info' | 'ok' | 'error' = 'info'): void {
+  $<HTMLInputElement>('rumo-url').value = info.url;
+  $<HTMLInputElement>('rumo-project').value = info.project;
+  const token = $<HTMLInputElement>('rumo-token');
+  token.value = '';
+  token.placeholder = info.hasToken ? '•••••••• saved (type to replace)' : 'A token from your Rumo account page';
+  const state = $<HTMLSpanElement>('rumo-state');
+  state.textContent =
+    message ||
+    (info.url && info.project && info.hasToken
+      ? 'Saved recordings can be sent from the Done screen.'
+      : info.encryption
+        ? 'Not set up yet.'
+        : "The system keychain is unavailable, so the token can't be saved.");
+  state.dataset.kind = kind;
+}
+
+async function saveRumo(): Promise<boolean> {
+  const token = $<HTMLInputElement>('rumo-token').value.trim();
+  const result = await window.recorder.setRumo({
+    url: $<HTMLInputElement>('rumo-url').value,
+    project: $<HTMLInputElement>('rumo-project').value,
+    // Empty field keeps the stored token.
+    token: token || undefined,
+  });
+  if (result.ok) showRumoInfo(result.info, 'Saved. The token is stored encrypted in the system keychain.', 'ok');
+  else showRumoInfo(result.info, result.error, 'error');
+  return result.ok;
+}
+
 async function openSettings(): Promise<void> {
   const loaded = await window.recorder.getSettings();
   settings = loaded.settings;
@@ -2303,6 +2377,7 @@ async function openSettings(): Promise<void> {
   $<HTMLInputElement>('pref-blur').checked = settings.preferences.blurSensitive;
   $<HTMLInputElement>('failure-clip').value = String(settings.preferences.failureClipSec);
   showTestRailInfo(await window.recorder.getTestRail());
+  showRumoInfo(await window.recorder.getRumo());
   $<HTMLDialogElement>('settings').showModal();
 }
 
@@ -2501,6 +2576,13 @@ $<HTMLInputElement>('browser-port').addEventListener('change', async (event) => 
   allSources = [];
 });
 $<HTMLButtonElement>('tr-save').addEventListener('click', () => void saveTestRail());
+$<HTMLButtonElement>('rumo-save').addEventListener('click', () => void saveRumo());
+$<HTMLButtonElement>('rumo-test').addEventListener('click', async () => {
+  if (!(await saveRumo())) return;
+  const result = await window.recorder.testRumo();
+  if (result.ok) showRumoInfo(result.info, `Connected: ${result.project}.`, 'ok');
+  else showRumoInfo(result.info, result.error, 'error');
+});
 $<HTMLButtonElement>('tr-test').addEventListener('click', async () => {
   // Test what is typed: save first if anything changed.
   if (!(await saveTestRail())) return;

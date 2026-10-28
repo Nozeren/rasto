@@ -245,6 +245,7 @@
         <div id="done-meta" class="hint"></div>
         <ol id="done-cases" class="queue"></ol>
         <div id="done-testrail" class="done-testrail" hidden></div>
+        <div id="done-rumo" class="done-testrail" hidden></div>
         <div class="done-actions">
           <button id="show-folder" type="button">Show in folder</button>
           <button id="record-again" type="button">Record the same cases again</button>
@@ -283,6 +284,22 @@
         <span id="tr-state" class="hint"></span>
         <button id="tr-test" type="button">Test connection</button>
         <button id="tr-save" type="button" class="primary">Save</button>
+      </div>
+
+      <h3>Rumo</h3>
+      <p class="hint">Send saved recordings to Rumo: each case becomes a result, with its clip attached.</p>
+      <div class="form">
+        <label for="rumo-url">Address</label>
+        <input id="rumo-url" type="text" placeholder="https://rumo.example.com" spellcheck="false">
+        <label for="rumo-project">Project</label>
+        <input id="rumo-project" type="text" placeholder="shop (as in /p/shop)" spellcheck="false">
+        <label for="rumo-token">API token</label>
+        <input id="rumo-token" type="password" placeholder="A token from your Rumo account page" autocomplete="off">
+      </div>
+      <div class="tr-actions">
+        <span id="rumo-state" class="hint"></span>
+        <button id="rumo-test" type="button">Test connection</button>
+        <button id="rumo-save" type="button" class="primary">Save</button>
       </div>
 
       <h3>Recording</h3>
