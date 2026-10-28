@@ -224,6 +224,17 @@ interface TestRailInfo {
 
 type TestRailSaveResult = { ok: true; info: TestRailInfo } | { ok: false; error: string; info: TestRailInfo };
 
+interface RumoInfo {
+  url: string;
+  project: string;
+  hasToken: boolean;
+  encryption: boolean;
+}
+
+type RumoSaveResult = { ok: true; info: RumoInfo; project?: string } | { ok: false; error: string; info: RumoInfo };
+
+type RumoPostResult = { ok: true; runUrl: string; recorded: number; unmatched: string[] } | { ok: false; error: string };
+
 interface HistoryEntry {
   kind?: 'guide';
   log: string;
@@ -297,6 +308,11 @@ interface RecorderApi {
   unsavedSave(id: string): Promise<SaveResult>;
   unsavedDiscard(id: string): Promise<void>;
   testrailPost(run: string): Promise<TestRailPostResult>;
+  rumoPost(): Promise<RumoPostResult>;
+  getRumo(): Promise<RumoInfo>;
+  setRumo(input: { url: string; project: string; token?: string }): Promise<RumoSaveResult>;
+  testRumo(): Promise<RumoSaveResult>;
+  openRumoRun(url: string): Promise<void>;
   previewOutput(): Promise<OutputPreview>;
   guideFileToken(title: string): Promise<string>;
   browserStart(options: { console: boolean; network: boolean }): Promise<{ ok: true } | Failure>;

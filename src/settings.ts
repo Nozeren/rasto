@@ -52,6 +52,7 @@ export interface Settings {
   recent: { subjects: string[]; configs: string[] };
   /** TestRail access. The API key is encrypted with the OS keychain (Electron safeStorage), stored as base64. */
   testrail: { url: string; user: string; apiKeyEncrypted: string };
+  rumo: { url: string; project: string; tokenEncrypted: string };
 }
 
 /** Electron accelerators. "Control+Alt" is Ctrl+Alt on Windows/Linux and ⌃⌥ on macOS. */
@@ -87,6 +88,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   recent: { subjects: [], configs: [] },
   testrail: { url: '', user: '', apiKeyEncrypted: '' },
+  rumo: { url: '', project: '', tokenEncrypted: '' },
 };
 
 function settingsPath(): string {
@@ -118,6 +120,7 @@ export async function loadSettings(): Promise<Settings> {
       preferences: { ...DEFAULT_SETTINGS.preferences, ...(stored.preferences ?? {}) },
       recent: { subjects: stored.recent?.subjects ?? [], configs: stored.recent?.configs ?? [] },
       testrail: { ...DEFAULT_SETTINGS.testrail, ...(stored.testrail ?? {}) },
+      rumo: { ...DEFAULT_SETTINGS.rumo, ...(stored.rumo ?? {}) },
     };
   } catch {
     return structuredClone(DEFAULT_SETTINGS);

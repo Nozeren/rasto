@@ -20,6 +20,7 @@ import { postRun, SavedRecording } from './report';
 import { startScreencast, stopScreencast, tabThumbnail } from './screencast';
 import { HotkeyAction, loadSettings, OutputSettings, Preferences, remember, saveSettings, Settings } from './settings';
 import { credentialSource, loadCase, loadRun, parseCaseId, parseRunId, setCredentials, testConnection } from './testrail';
+import { postRecording, RumoConfig, testConnection as testRumoConnection } from './rumo';
 import { appendChunk, beginCapture, discardUnsaved, endCapture, listUnsaved, writeSnapshot } from './unsaved';
 
 
@@ -648,6 +649,71 @@ ipcMain.handle('test-testrail', async () => {
     return { ok: true, info: testRailInfo() };
   } catch (error) {
     return { ok: false, error: (error as Error).message, info: testRailInfo() };
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Rumo (Settings): where recordings can be sent. The token is stored encrypted, like the TestRail key.
+
+function rumoConfig(): RumoConfig | null {
+  const { url, project, tokenEncrypted } = settings.rumo;
+  if (!url || !project || !tokenEncrypted || !safeStorage.isEncryptionAvailable()) return null;
+  try {
+    return { url, project, token: safeStorage.decryptString(Buffer.from(tokenEncrypted, 'base64')) };
+  } catch {
+    return null;
+  }
+}
+
+function rumoInfo() {
+  return {
+    url: settings.rumo.url,
+    project: settings.rumo.project,
+    hasToken: !!settings.rumo.tokenEncrypted,
+    encryption: safeStorage.isEncryptionAvailable(),
+  };
+}
+
+ipcMain.handle('get-rumo', async () => rumoInfo());
+
+/** `token` undefined keeps the stored one, '' removes it. */
+ipcMain.handle('set-rumo', async (_event, input: { url: string; project: string; token?: string }) => {
+  if (input.token && !safeStorage.isEncryptionAvailable()) {
+    return { ok: false, error: 'The system keychain is not available, so the token cannot be stored safely.', info: rumoInfo() };
+  }
+  settings.rumo.url = input.url.trim();
+  settings.rumo.project = input.project.trim();
+  if (input.token !== undefined) {
+    settings.rumo.tokenEncrypted = input.token ? safeStorage.encryptString(input.token.trim()).toString('base64') : '';
+  }
+  await saveSettings(settings);
+  return { ok: true, info: rumoInfo() };
+});
+
+ipcMain.handle('test-rumo', async () => {
+  const config = rumoConfig();
+  if (!config) return { ok: false, error: 'Fill in the address, the project and a token first', info: rumoInfo() };
+  try {
+    return { ok: true, project: await testRumoConnection(config), info: rumoInfo() };
+  } catch (error) {
+    return { ok: false, error: (error as Error).message, info: rumoInfo() };
+  }
+});
+
+// Only the run pages of the Rumo set up here: the renderer must not open arbitrary addresses.
+ipcMain.handle('open-rumo-run', async (_event, url: string) => {
+  const rumoBase = settings.rumo.url.replace(/\/+$/, '');
+  if (/^https?:\/\//.test(rumoBase) && url.startsWith(`${rumoBase}/p/`)) await shell.openExternal(url);
+});
+
+ipcMain.handle('rumo-post', async () => {
+  const config = rumoConfig();
+  if (!config) return { ok: false, error: 'Rumo is not set up (⚙ Settings → Rumo)' };
+  if (!lastSaved) return { ok: false, error: 'No recording saved yet' };
+  try {
+    return { ok: true, ...(await postRecording(config, lastSaved)) };
+  } catch (error) {
+    return failure(error);
   }
 });
 
