@@ -10,8 +10,9 @@ const CAPTURE_FPS = 15;
 const FLASH_MS = 2000;
 const BANNER_FONT = '-apple-system, "Segoe UI", Roboto, sans-serif';
 const BANNER_BACKGROUND = 'rgba(15, 23, 42, 0.9)';
-/** Same blue as .guide-number in hud.css. */
 const GUIDE_BADGE_COLOR = '#3b82f6';
+/** The HUD's small white text needs darker colours than the video's large label; these match its buttons in hud.css. */
+const HUD_FLASH_COLORS: Record<CaseResult | 'guide', string> = { pass: '#137a3f', fail: '#cf3137', blocked: '#a85c00', guide: '#2563eb' };
 /** How long a guide's title card and each part card stay on screen. */
 const CARD_MS = 3000;
 const CARD_LINES = 3;
@@ -178,6 +179,25 @@ function setStatus(text: string, kind: 'info' | 'ok' | 'error' = 'info'): void {
   const status = $<HTMLDivElement>('status');
   status.textContent = text;
   status.dataset.kind = kind;
+  // Read out at once if it's a problem, otherwise when the screen reader is free.
+  status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+}
+
+/** Tells a screen reader what the recording is doing. */
+function announce(text: string): void {
+  $<HTMLDivElement>('announce').textContent = text;
+}
+
+/** Makes a row that reacts to clicks usable from the keyboard and by screen readers too. */
+function activatable(node: HTMLElement, action: () => void): void {
+  node.tabIndex = 0;
+  node.setAttribute('role', 'button');
+  node.addEventListener('click', action);
+  node.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    action();
+  });
 }
 
 function formatDuration(ms: number): string {
@@ -292,6 +312,8 @@ function showView(next: View): void {
     const index = FLOW.indexOf(item.dataset.goto as View);
     item.classList.toggle('active', index === flowIndex);
     item.classList.toggle('done', flowIndex > index || next === 'done');
+    if (index === flowIndex) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
     item.disabled = next === 'recording';
   });
   document.querySelector('.stepper')?.classList.toggle('hidden', next === 'recording');
@@ -299,6 +321,16 @@ function showView(next: View): void {
   historyBtn.classList.toggle('active', next === 'history');
   historyBtn.disabled = next === 'recording';
   if (next !== 'history') $<HTMLVideoElement>('hr-video').pause();
+
+  // Focus was on something now hidden: start from the new view, or keyboard users land at the top of the window.
+  const focused = document.activeElement;
+  if (!focused || focused === document.body || focused.closest('.view[hidden]')) {
+    const opened = document.querySelector<HTMLElement>(`.view[data-view="${next}"]`);
+    if (opened) {
+      opened.tabIndex = -1;
+      opened.focus({ preventScroll: true });
+    }
+  }
 
   document.querySelector('.actionbar')?.classList.toggle('hidden', !FLOW.includes(next));
   $<HTMLButtonElement>('back').disabled = flowIndex <= 0;
@@ -461,7 +493,7 @@ function renderRunTests(): void {
       const pill = el('span', 'pill', test.status);
       pill.dataset.status = test.status.toLowerCase();
       li.append(pill, el('b', '', test.caseId), el('span', 'title', test.title));
-      li.addEventListener('click', () => void loadInput(test.caseId));
+      activatable(li, () => void loadInput(test.caseId));
       list.appendChild(li);
     });
 }
@@ -1212,6 +1244,7 @@ function renderRecording(): void {
   $<HTMLSpanElement>('rec-text').textContent = step?.text ?? '';
 
   const list = $<HTMLDivElement>('rec-steps');
+  const refocus = list.contains(document.activeElement);
   list.innerHTML = '';
   let lastGroup = '';
   activeCase.steps.forEach((s, i) => {
@@ -1221,10 +1254,11 @@ function renderRecording(): void {
       lastGroup = group;
     }
     const line = stepLine(s, `step-line${i === stepIndex ? ' current' : i < stepIndex ? ' done' : ''}`);
-    line.addEventListener('click', () => goToStep(i));
+    activatable(line, () => goToStep(i));
     list.appendChild(line);
   });
   list.querySelector('.current')?.scrollIntoView({ block: 'nearest' });
+  if (refocus) list.querySelector<HTMLElement>('.current')?.focus();
 
   $<HTMLButtonElement>('res-pass').textContent = activeCase.guide ? '✓ Done' : '✓ Pass';
   $<HTMLButtonElement>('res-fail').hidden = activeCase.guide;
@@ -1239,7 +1273,8 @@ function hudFlash(): { text: string; color: string; until: number } | null {
   const card = currentCard();
   hudCardTitle = card?.title ?? null;
   // The HUD counts in wall-clock time; the card's end in recorded time is converted for it.
-  return card ? { text: `${card.kicker}: ${card.title}`, color: GUIDE_BADGE_COLOR, until: Date.now() + card.until - elapsedMs() } : flash;
+  if (card) return { text: `${card.kicker}: ${card.title}`, color: HUD_FLASH_COLORS.guide, until: Date.now() + card.until - elapsedMs() };
+  return flash && flash.result ? { ...flash, color: HUD_FLASH_COLORS[flash.result] } : flash;
 }
 
 /** Sends what the floating HUD needs to show; called on every change while recording. */
@@ -1419,6 +1454,7 @@ async function beginCapture(): Promise<void> {
   snapshotHandle = window.setInterval(() => window.recorder.captureSnapshot(currentMeta()), 2000);
   renderRecording();
   pushHud();
+  announce('Recording started');
 }
 
 /** Stop during the countdown: nothing was recorded, go back to step ③. */
@@ -1443,6 +1479,7 @@ function togglePause(): void {
     paused = false;
     $<HTMLButtonElement>('pause').textContent = 'Ⅱ Pause';
     dot?.classList.remove('paused');
+    announce('Recording resumed');
   } else {
     mediaRecorder.pause();
     activeMs += Date.now() - segmentStart;
@@ -1450,6 +1487,7 @@ function togglePause(): void {
     paused = true;
     $<HTMLButtonElement>('pause').textContent = '▶ Resume';
     dot?.classList.add('paused');
+    announce('Recording paused');
   }
   pushHud();
 }
@@ -1538,6 +1576,7 @@ function stopRecording(): void {
   window.clearInterval(timerHandle);
   window.clearInterval(snapshotHandle);
   mediaRecorder?.stop();
+  announce('Recording stopped');
   document.querySelector('.rec-dot')?.classList.remove('paused');
   $<HTMLButtonElement>('pause').textContent = 'Ⅱ Pause';
 }

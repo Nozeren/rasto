@@ -7,6 +7,19 @@
   const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   let state: HudState | null = null;
 
+  /** Tells a screen reader what the recording is doing, only when that changes. */
+  function announce(text: string): void {
+    const live = byId('announce');
+    if (live.textContent !== text) live.textContent = text;
+  }
+
+  /** A button whose meaning changes: its tooltip and its name for screen readers. */
+  function describeButton(id: string, text: string): void {
+    const button = byId<HTMLButtonElement>(id);
+    button.title = text;
+    button.setAttribute('aria-label', text);
+  }
+
   function format(ms: number): string {
     const total = Math.max(0, Math.floor(ms / 1000));
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
@@ -44,10 +57,12 @@
       stepEl.append(big, document.createTextNode('  Recording starts — switch to the browser'));
       byId('timer').textContent = '00:00';
       ['prev', 'next', 'pass', 'fail', 'blocked', 'pause'].forEach((id) => (byId<HTMLButtonElement>(id).disabled = true));
-      byId<HTMLButtonElement>('stop').title = 'Cancel';
+      describeButton('stop', 'Cancel');
+      announce('Recording is about to start');
       return;
     }
-    byId<HTMLButtonElement>('stop').title = 'Stop recording';
+    describeButton('stop', 'Stop recording');
+    announce(s.paused ? 'Recording paused' : 'Recording');
 
     const flashing = s.flash && Date.now() < s.flash.until;
     stepEl.classList.toggle('flash', !!flashing);
@@ -67,7 +82,7 @@
     byId<HTMLButtonElement>('next').disabled = !s.canNext || s.finishing;
     ['pass', 'fail', 'blocked'].forEach((id) => (byId<HTMLButtonElement>(id).disabled = s.paused || s.finishing));
     byId<HTMLButtonElement>('pause').textContent = s.paused ? '▶' : 'Ⅱ';
-    byId<HTMLButtonElement>('pause').title = s.paused ? 'Resume' : 'Pause';
+    describeButton('pause', s.paused ? 'Resume' : 'Pause');
     byId<HTMLButtonElement>('pause').disabled = s.finishing;
   }
 

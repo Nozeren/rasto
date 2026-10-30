@@ -19,6 +19,14 @@ body {
 }
 
 button { -webkit-app-region: no-drag; }
+button:focus-visible, .row.note input:focus-visible { outline: 2px solid #5aaaff; outline-offset: 2px; }
+
+/* Read by screen readers only. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot { animation: none; }
+}
 
 .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .grow { flex: 1; }
@@ -46,7 +54,7 @@ button { -webkit-app-region: no-drag; }
 /* A guide's step number, in the same blue badge as the video banner. */
 .guide-number {
   display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; padding: 0 0.3em;
-  border-radius: 999px; background: #3b82f6; color: #fff; font-size: 0.85em;
+  border-radius: 999px; background: #2563eb; color: #fff; font-size: 0.85em;
 }
 
 button {
@@ -54,7 +62,7 @@ button {
   font-weight: 600;
   padding: 5px 11px;
   border-radius: 7px;
-  border: 1px solid #3a3a3c;
+  border: 1px solid #85858b;
   background: #2c2c2e;
   color: #f5f5f7;
   cursor: pointer;
@@ -63,17 +71,17 @@ button:hover:not(:disabled) { filter: brightness(1.2); }
 button:disabled { opacity: 0.35; cursor: default; }
 button.ghost { border: none; background: none; color: #a1a1a6; font-size: 15px; padding: 2px 6px; }
 button.result { border: none; color: #fff; }
-button.pass { background: #1f9d55; }
-button.fail { background: #e5484d; }
-button.blocked { background: #d97706; }
-button.stop { background: #ff3b30; border-color: #ff3b30; color: #fff; }
+button.pass { background: #137a3f; }
+button.fail { background: #cf3137; }
+button.blocked { background: #a85c00; }
+button.stop { background: #d42a1f; border-color: #d42a1f; color: #fff; }
 
 /* Countdown before recording starts */
 body.counting .dot { animation: none; background: #8e8e93; }
-.count { display: inline-block; min-width: 22px; font-size: 16px; line-height: 1; font-weight: 800; color: #ff3b30; font-variant-numeric: tabular-nums; }
+.count { display: inline-block; min-width: 22px; font-size: 16px; line-height: 1; font-weight: 800; color: #ff8078; font-variant-numeric: tabular-nums; }
 
 /* The note box: a row under the controls while it is open. */
 .row.note { padding: 0 12px 10px; }
-.row.note input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid #3a3a3c; background: #2c2c2e; color: #fff; outline: none; }
+.row.note input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid #85858b; background: #2c2c2e; color: #fff; outline: none; }
 .row.note input:focus { border-color: #0a84ff; }
 .row.note[hidden] { display: none; }

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="hud.css">
 </head>
 <body>
+  <div id="announce" class="sr-only" role="status"></div>
   <div class="row top">
     <span id="dot" class="dot"></span>
     <span id="timer" class="timer">00:00</span>
@@ -14,23 +15,23 @@
     <span id="position" class="muted"></span>
     <span id="cases" class="muted"></span>
     <span class="grow"></span>
-    <button id="show-main" type="button" class="ghost" title="Show the main window">⤢</button>
+    <button id="show-main" type="button" class="ghost" title="Show the main window" aria-label="Show the main window">⤢</button>
   </div>
   <div id="step" class="step"></div>
   <div class="row controls">
-    <button id="prev" type="button" title="Previous step">◀</button>
-    <button id="next" type="button" title="Next step">▶</button>
+    <button id="prev" type="button" title="Previous step" aria-label="Previous step">◀</button>
+    <button id="next" type="button" title="Next step" aria-label="Next step">▶</button>
     <span class="grow"></span>
     <button id="pass" type="button" class="result pass">✓ Pass</button>
     <button id="fail" type="button" class="result fail">✗ Fail</button>
     <button id="blocked" type="button" class="result blocked">⊘ Blocked</button>
     <span class="grow"></span>
-    <button id="note" type="button" title="Add a note to this step">✎</button>
-    <button id="pause" type="button" title="Pause">Ⅱ</button>
-    <button id="stop" type="button" class="stop" title="Stop recording">■</button>
+    <button id="note" type="button" title="Add a note to this step" aria-label="Add a note to this step">✎</button>
+    <button id="pause" type="button" title="Pause" aria-label="Pause">Ⅱ</button>
+    <button id="stop" type="button" class="stop" title="Stop recording" aria-label="Stop recording">■</button>
   </div>
   <form id="note-form" class="row note" hidden>
-    <input id="note-text" type="text" maxlength="500" placeholder="Note for this step: Enter to add, Esc to cancel" autocomplete="off">
+    <input id="note-text" type="text" maxlength="500" aria-label="Note for this step" placeholder="Note for this step: Enter to add, Esc to cancel" autocomplete="off">
   </form>
   <script src="../dist/hud.js"></script>
 </body>

@@ -29,7 +29,7 @@
       <div class="split">
         <div class="pane">
           <div class="search">
-            <input id="case-input" type="text" placeholder="TestRail case C1234  ·  run R100" autocomplete="off" spellcheck="false">
+            <input id="case-input" type="text" aria-label="TestRail case or run" placeholder="TestRail case C1234  ·  run R100" autocomplete="off" spellcheck="false">
             <button id="case-load" type="button" class="primary">Load</button>
           </div>
           <div class="search-alt">
@@ -38,14 +38,14 @@
           </div>
 
           <div id="paste-box" class="card" hidden>
-            <textarea id="paste-text" rows="7" placeholder="Paste a Scenario, just Given / When / Then lines, or a guide (# title and numbered steps)"></textarea>
+            <textarea id="paste-text" rows="7" aria-label="Steps to record" placeholder="Paste a Scenario, just Given / When / Then lines, or a guide (# title and numbered steps)"></textarea>
             <div class="card-actions"><button id="paste-use" type="button" class="primary">Use these steps</button></div>
           </div>
 
           <div id="run-box" class="card" hidden>
             <div class="card-head">
               <div id="run-title" class="card-title"></div>
-              <input id="run-filter" type="search" placeholder="Filter">
+              <input id="run-filter" type="search" aria-label="Filter the run's tests" placeholder="Filter">
             </div>
             <ul id="run-tests" class="list"></ul>
           </div>
@@ -57,7 +57,7 @@
                 <div id="case-name" class="card-title"></div>
               </div>
             </div>
-            <select id="scenario-select" hidden></select>
+            <select id="scenario-select" aria-label="Scenario" hidden></select>
             <div id="rows" class="rows" hidden>
               <div class="label">Examples row to record</div>
               <div id="row-chips" class="chips"></div>
@@ -95,7 +95,7 @@
       <div class="split wide-side">
         <div class="pane">
           <div class="search">
-            <input id="source-filter" type="search" placeholder="Filter windows (e.g. Chrome)">
+            <input id="source-filter" type="search" aria-label="Filter windows" placeholder="Filter windows (e.g. Chrome)">
             <button id="refresh-sources" type="button">Refresh</button>
           </div>
           <div id="access-warning" class="notice" hidden></div>
@@ -150,7 +150,7 @@
     <section class="view" data-view="recording" hidden>
       <div class="recording">
         <div class="rec-top">
-          <span class="rec-dot"></span><span id="rec-timer" class="rec-timer">00:00</span>
+          <span class="rec-dot" aria-hidden="true"></span><span id="rec-timer" class="rec-timer">00:00</span>
           <span id="rec-case" class="rec-case"></span>
           <span id="rec-progress" class="rec-progress"></span>
         </div>
@@ -160,12 +160,12 @@
         </div>
         <div id="rec-steps" class="rec-steps"></div>
         <form id="note-form" class="note-form">
-          <input id="note-text" type="text" maxlength="500" placeholder="Add a note to this step (Ctrl+Alt+N), then Enter" autocomplete="off" spellcheck="true">
+          <input id="note-text" type="text" maxlength="500" aria-label="Note for this step" placeholder="Add a note to this step (Ctrl+Alt+N), then Enter" autocomplete="off" spellcheck="true">
           <button type="submit">Add note</button>
         </form>
         <div class="rec-controls">
-          <button id="step-prev" type="button">◀</button>
-          <button id="step-next" type="button">▶</button>
+          <button id="step-prev" type="button" aria-label="Previous step">◀</button>
+          <button id="step-next" type="button" aria-label="Next step">▶</button>
           <span class="spacer"></span>
           <button id="res-pass" type="button" class="result pass">✓ Pass</button>
           <button id="res-fail" type="button" class="result fail">✗ Fail</button>
@@ -182,13 +182,13 @@
       <div class="split history">
         <div class="pane">
           <div class="search">
-            <input id="history-filter" type="search" placeholder="Filter by case, subject, config or file">
-            <select id="history-kind">
+            <input id="history-filter" type="search" aria-label="Filter history" placeholder="Filter by case, subject, config or file">
+            <select id="history-kind" aria-label="Kind of recording">
               <option value="">Runs and guides</option>
               <option value="run">Test runs</option>
               <option value="guide">Guides</option>
             </select>
-            <select id="history-result">
+            <select id="history-result" aria-label="Result">
               <option value="">All results</option>
               <option value="pass">Passed</option>
               <option value="fail">Failed</option>
@@ -237,8 +237,8 @@
 
     <!-- Done -->
     <section class="view" data-view="done" hidden>
-      <div class="done-view">
-        <div id="done-icon" class="done-icon">…</div>
+      <div class="done-view" aria-live="polite">
+        <div id="done-icon" class="done-icon" aria-hidden="true">…</div>
         <div id="done-title" class="done-title">Saving…</div>
         <progress id="progress" max="1" value="0"></progress>
         <code id="done-file" class="done-file"></code>
@@ -255,16 +255,17 @@
   </main>
 
   <footer class="actionbar">
-    <div id="status" class="status" data-kind="info"></div>
+    <div id="status" class="status" data-kind="info" role="status"></div>
+    <div id="announce" class="sr-only" role="status"></div>
     <div class="nav">
       <button id="back" type="button">← Back</button>
       <button id="next" type="button" class="primary">Next →</button>
     </div>
   </footer>
 
-  <dialog id="settings">
+  <dialog id="settings" aria-labelledby="settings-title">
     <form method="dialog" class="settings">
-      <div class="settings-head"><h2>Settings</h2><button type="submit" class="icon-btn" title="Close">✕</button></div>
+      <div class="settings-head"><h2 id="settings-title">Settings</h2><button type="submit" class="icon-btn" title="Close" aria-label="Close settings">✕</button></div>
 
       <h3>Hotkeys</h3>
       <p class="hint">Work while another app has focus. Click <b>Change</b> and press the new combination (needs Ctrl, Alt or Cmd; Esc cancels).</p>
