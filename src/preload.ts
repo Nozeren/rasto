@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('recorder', {
   listTabs: () => ipcRenderer.invoke('list-tabs'),
   screencastStart: (tabId: string) => ipcRenderer.invoke('screencast-start', tabId),
   screencastStop: () => ipcRenderer.invoke('screencast-stop'),
+  onRecordingLost: (callback: (reason: string) => void) => {
+    ipcRenderer.on('recording-lost', (_event, reason) => callback(reason));
+  },
   onFrame: (callback: (frame: unknown) => void) => {
     ipcRenderer.on('browser-frame', (_event, frame) => callback(frame));
   },

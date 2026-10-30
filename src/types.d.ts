@@ -12,7 +12,7 @@ interface CaptureSource {
 
 type SaveResult =
   | { ok: true; path: string; bytes: number; preset: string; log: string; network?: { har: string; requests: number; failed: number }; clips?: SavedClip[]; report?: string }
-  | { ok: false; error: string; raw: string };
+  | { ok: false; error: string; raw: string; id?: string };
 
 /** A clip saved next to the recording (clips.ts). */
 interface SavedClip {
@@ -305,6 +305,7 @@ interface RecorderApi {
   listTabs(): Promise<CaptureSource[]>;
   screencastStart(tabId: string): Promise<{ ok: true } | Failure>;
   screencastStop(): Promise<void>;
+  onRecordingLost(callback: (reason: string) => void): void;
   onFrame(callback: (frame: { data: string; viewport: { width: number; height: number } }) => void): void;
   onInput(callback: (event: InputEvent) => void): void;
   /** Where the sensitive fields of the recorded tab are: [x, y, width, height] in viewport CSS pixels. */

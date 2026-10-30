@@ -41,6 +41,7 @@ export class DevTools {
   private nextId = 1;
   private pending = new Map<number, { resolve: (result: any) => void; reject: (error: Error) => void }>();
   private handlers: EventHandler[] = [];
+  private closeHandlers: (() => void)[] = [];
 
   private constructor(private readonly ws: WebSocket) {
     ws.on('message', (data) => {
@@ -62,6 +63,7 @@ export class DevTools {
     ws.on('close', () => {
       for (const waiting of this.pending.values()) waiting.reject(new Error('the browser connection closed'));
       this.pending.clear();
+      for (const handler of this.closeHandlers) handler();
     });
     ws.on('error', (error) => console.error(`[devtools] ${error.message}`));
   }
@@ -95,6 +97,11 @@ export class DevTools {
 
   onEvent(handler: EventHandler): void {
     this.handlers.push(handler);
+  }
+
+  /** Called when the connection ends, whichever side ended it. */
+  onClose(handler: () => void): void {
+    this.closeHandlers.push(handler);
   }
 
   close(): void {

@@ -160,6 +160,10 @@ let timeline: TimelineMark[] = [];
 let lastSavedPath = '';
 /** True while the finished recording is being compressed and saved. */
 let compressing = false;
+/** Why the recording stopped by itself, for the Done screen; empty when the user stopped it. */
+let stoppedEarly = '';
+/** Tries a failed save again, while the Done screen offers it. */
+let retrySave: (() => Promise<void>) | null = null;
 let countdownUntil = 0;
 let countdownHandle: number | undefined;
 
@@ -292,12 +296,11 @@ function showView(next: View): void {
     const index = FLOW.indexOf(item.dataset.goto as View);
     item.classList.toggle('active', index === flowIndex);
     item.classList.toggle('done', flowIndex > index || next === 'done');
-    item.disabled = next === 'recording';
   });
   document.querySelector('.stepper')?.classList.toggle('hidden', next === 'recording');
   const historyBtn = $<HTMLButtonElement>('open-history');
   historyBtn.classList.toggle('active', next === 'history');
-  historyBtn.disabled = next === 'recording';
+  updateNavigation();
   if (next !== 'history') $<HTMLVideoElement>('hr-video').pause();
 
   document.querySelector('.actionbar')?.classList.toggle('hidden', !FLOW.includes(next));
@@ -308,6 +311,18 @@ function showView(next: View): void {
   if (next === 'source') void enterSource();
   if (next === 'save') void enterSave();
   if (next === 'cases') stopPreview();
+}
+
+/** No leaving while recording, or while saving: a failed save is only explained on the Done screen. */
+function updateNavigation(): void {
+  const locked = view === 'recording' || compressing;
+  document.querySelectorAll<HTMLButtonElement>('.stepper-item').forEach((item) => (item.disabled = locked));
+  $<HTMLButtonElement>('open-history').disabled = locked;
+}
+
+function setCompressing(value: boolean): void {
+  compressing = value;
+  updateNavigation();
 }
 
 function goNext(): void {
@@ -790,6 +805,9 @@ async function startPreview(): Promise<void> {
 
   try {
     stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const lostName = selectedSource.name;
+    // Fires when the source goes away, not when stopPreview stops the track.
+    stream.getVideoTracks()[0].addEventListener('ended', () => recordingLost(`"${lostName}" is no longer available: it was closed, or sharing stopped.`));
   } catch (error) {
     setStatus(`Could not capture "${selectedSource.name}": ${(error as Error).message}`, 'error');
     return;
@@ -1323,8 +1341,30 @@ async function startBrowserCapture(): Promise<void> {
   if (wanted.network) browserNetwork = state;
 }
 
+/**
+ * The source went away or the capture can't be written. A frozen picture would otherwise keep recording while the timer
+ * runs, so stop and save what there is, and say why on the Done screen.
+ */
+function recordingLost(reason: string): void {
+  if (countdownUntil) {
+    stopPreview();
+    void cancelCountdown().then(() => setStatus(`${reason} Nothing was recorded.`, 'error'));
+    return;
+  }
+  if (isRecording()) {
+    stoppedEarly = reason;
+    stopRecording();
+    return;
+  }
+  // Stopping already, or nothing under way.
+  if (mediaRecorder || !previewing()) return;
+  stopPreview();
+  setStatus(reason, 'error');
+}
+
 async function startRecording(): Promise<void> {
   if (!queue.length || !selectedSource) return;
+  stoppedEarly = '';
   await saveOutput();
   if (!previewing()) await startPreview();
   if (!previewing()) return;
@@ -1578,8 +1618,12 @@ async function finishRecording(): Promise<void> {
   stopPreview();
   await window.recorder.hudClose();
 
+  compressing = true;
   showView('done');
   setStatus('');
+  setDoneNotice('');
+  retrySave = null;
+  $<HTMLButtonElement>('retry-save').hidden = true;
   $<HTMLDivElement>('done-icon').textContent = '⏳';
   $<HTMLDivElement>('done-title').textContent = `Compressing ${formatDuration(activeMs)} of video…`;
   $<HTMLElement>('done-file').textContent = '';
@@ -1593,19 +1637,30 @@ async function finishRecording(): Promise<void> {
   testrailOutcome = null;
   renderTestRail();
   $<HTMLButtonElement>('record-again').hidden = false;
-  compressing = true;
   await chunkWrites;
   const result = await window.recorder.saveRecording(meta);
-  compressing = false;
+  setCompressing(false);
   await showSaveResult(result, meta);
+  await postIfAsked(result);
+}
+
+async function postIfAsked(result: SaveResult): Promise<void> {
   const run = $<HTMLInputElement>('out-run').value.trim();
   if (result.ok && run && !loggedCases.some((c) => c.guide)) await postToTestRail(run);
+}
+
+function setDoneNotice(text: string): void {
+  const notice = $<HTMLDivElement>('done-notice');
+  notice.textContent = text;
+  notice.hidden = !text;
 }
 
 /** The Done screen once a recording is saved (or failed to): file, size, what else was saved. */
 async function showSaveResult(result: SaveResult, meta: RecordingMeta | null): Promise<void> {
   $<HTMLProgressElement>('progress').hidden = true;
   setDoneActions(true);
+  $<HTMLButtonElement>('retry-save').hidden = true;
+  if (stoppedEarly) setDoneNotice(`Recording stopped early. ${stoppedEarly} Everything captured until then is kept.`);
   if (result.ok) {
     lastSavedPath = result.path;
     const failed = loggedCases.some((c) => c.result === 'fail');
@@ -1617,12 +1672,41 @@ async function showSaveResult(result: SaveResult, meta: RecordingMeta | null): P
       ? `${formatBytes(result.bytes)} · ${formatDuration(meta.durationMs)} · steps as chapters and subtitles · step log${result.report ? ' and HTML report' : ''} saved next to it${clips}${consoleSummary(meta)}${networkSummary(meta, result.network)} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`
       : `${formatBytes(result.bytes)} · step log saved next to it${clips} · ${result.path.replace(/[\\/][^\\/]+$/, '')}`;
     settings = (await window.recorder.getSettings()).settings;
+  } else if (!result.raw) {
+    lastSavedPath = '';
+    $<HTMLButtonElement>('show-folder').disabled = true;
+    $<HTMLDivElement>('done-icon').textContent = '❌';
+    $<HTMLDivElement>('done-title').textContent = 'Nothing was recorded';
+    $<HTMLDivElement>('done-meta').textContent = 'There is no video to save.';
   } else {
     lastSavedPath = result.raw;
-    $<HTMLDivElement>('done-icon').textContent = '❌';
-    $<HTMLDivElement>('done-title').textContent = 'Compression failed';
-    $<HTMLDivElement>('done-meta').textContent = `${result.error}. The raw capture was kept at ${result.raw}`;
+    $<HTMLDivElement>('done-icon').textContent = '⚠️';
+    $<HTMLDivElement>('done-title').textContent = 'Video not saved yet. Your recording is safe.';
+    $<HTMLDivElement>('done-meta').textContent = `${result.error}. Try again, or come back to it later: Rasto offers it on the Cases screen, also after a restart. The raw capture is at ${result.raw}`;
+    const id = result.id;
+    if (id) {
+      retrySave = () => tryAgain(id, meta);
+      $<HTMLButtonElement>('retry-save').hidden = false;
+    }
   }
+}
+
+/** Saves again a capture whose save failed (the disk was full, say). */
+async function tryAgain(id: string, meta: RecordingMeta | null): Promise<void> {
+  $<HTMLDivElement>('done-icon').textContent = '⏳';
+  $<HTMLDivElement>('done-title').textContent = 'Saving the video again…';
+  $<HTMLDivElement>('done-meta').textContent = '';
+  $<HTMLButtonElement>('retry-save').hidden = true;
+  const progress = $<HTMLProgressElement>('progress');
+  progress.value = 0;
+  progress.hidden = false;
+  setDoneActions(false);
+  setCompressing(true);
+  const result = await window.recorder.unsavedSave(id);
+  setCompressing(false);
+  await showSaveResult(result, meta);
+  await renderUnsaved();
+  if (meta) await postIfAsked(result);
 }
 
 /** Posts the recording just saved to a TestRail run, and shows how each case went. */
@@ -1699,6 +1783,9 @@ async function recoverUnsaved(u: UnsavedRecording): Promise<void> {
   loggedCases = [];
   testrailOutcome = null;
   renderTestRail();
+  stoppedEarly = '';
+  setDoneNotice('');
+  compressing = true;
   showView('done');
   $<HTMLDivElement>('done-icon').textContent = '⏳';
   $<HTMLDivElement>('done-title').textContent = `Saving the unfinished recording (${formatDuration(u.durationMs)})…`;
@@ -1711,9 +1798,8 @@ async function recoverUnsaved(u: UnsavedRecording): Promise<void> {
   progress.value = 0;
   progress.hidden = false;
   setDoneActions(false);
-  compressing = true;
   const result = await window.recorder.unsavedSave(u.id);
-  compressing = false;
+  setCompressing(false);
   await showSaveResult(result, null);
   await renderUnsaved();
 }
@@ -2416,6 +2502,7 @@ $<HTMLButtonElement>('res-blocked').addEventListener('click', () => recordResult
 $<HTMLButtonElement>('pause').addEventListener('click', togglePause);
 $<HTMLButtonElement>('stop').addEventListener('click', stopRecording);
 
+$<HTMLButtonElement>('retry-save').addEventListener('click', () => void retrySave?.());
 $<HTMLButtonElement>('show-folder').addEventListener('click', () => void window.recorder.reveal(lastSavedPath));
 $<HTMLButtonElement>('record-again').addEventListener('click', () => {
   loggedCases = [];
@@ -2541,6 +2628,8 @@ window.recorder.onRemoteCommand(async (request) => {
   }
   window.recorder.remoteReply(request.id, result);
 });
+
+window.recorder.onRecordingLost(recordingLost);
 
 window.recorder.onCompressProgress(({ fraction, preset }) => {
   $<HTMLProgressElement>('progress').value = fraction;
