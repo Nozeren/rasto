@@ -29,7 +29,7 @@ const SECRET_HEADERS = new Set([
 /** "access_token", "X-Session-Id", "newPassword", "client_secret", … */
 export function isSecretName(name: string): boolean {
   const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return /password|passwd|secret|token|apikey|credential/.test(key) || /(pwd|auth|session|sessionid|sid|otp|signature)$/.test(key);
+  return /password|passwd|secret|token|apikey|credential|cardnumber|ccnum|cvv|cvc|iban/.test(key) || /(pwd|auth|session|sessionid|sid|otp|signature|ssn)$/.test(key);
 }
 
 /** Absolute or relative (a redirect's Location often is). */

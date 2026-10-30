@@ -11,8 +11,9 @@
  * and the page's DOM is left untouched; only its events are read. Password and secret-looking fields are masked
  * (always ••••••, so not even their length shows). Input inside iframes is not tracked.
  *
- * The same listener reports where the sensitive fields are (passwords, card fields, anything marked data-rasto-blur), and
- * the renderer pixelates those parts of the frame before they reach the video.
+ * The same listener reports where the sensitive fields are (passwords, card and ID fields, anything marked
+ * data-rasto-blur), and the renderer pixelates those parts of the frame before they reach the video. A field is recognised
+ * by its name, id, autocomplete, placeholder or label, so this is best effort: the UI says so, and that frames aren't covered.
  *
  * A listener can't be removed once its connection is closed, and the next connection's binding reaches every world of
  * that name, so each screencast's listener carries its own token and only reports with it are taken. Otherwise a tab
@@ -52,8 +53,15 @@ export const inputTracker = (token: string): string => `(() => {
     const one = String(text ?? '').replace(/\\s+/g, ' ').trim();
     return one.length > max ? one.slice(0, max - 1) + '…' : one;
   };
-  const SECRET = /pass(word|wd)?|pwd|secret|token|api.?key|credential|otp|one.?time|pin\\b|cvv|cvc|security.?code|card.?number|cc-number|cc-csc/i;
-  const secret = (el) => el.type === 'password' || SECRET.test([el.name, el.id, el.autocomplete, el.getAttribute?.('aria-label'), el.placeholder].join(' '));
+  const SECRET = /pass(word|wd)?|pwd|secret|token|api.?key|credential|otp|one.?time|pin\\b|cvv|cvc|security.?code|card.?(number|num\\b|no\\b)|cc.?num|cc-csc|iban|ssn\\b|social.?security|tax.?id|account.?number|routing.?number/i;
+  // The visible label counts: a field called "number" labelled "Card number" is common.
+  const labelText = (el) => [
+    ...[...(el.labels ?? [])].map((label) => label.innerText),
+    // Not linked to the field, only right before it.
+    el.previousElementSibling?.matches('label') ? el.previousElementSibling.innerText : '',
+    ...(el.getAttribute?.('aria-labelledby') ?? '').split(/\\s+/).map((id) => id && document.getElementById(id)?.innerText),
+  ].join(' ');
+  const secret = (el) => el.type === 'password' || /^cc-/.test(el.autocomplete || '') || SECRET.test([el.name, el.id, el.autocomplete, el.getAttribute?.('aria-label'), el.placeholder, labelText(el)].join(' '));
   const fieldName = (el) => clean(el.labels?.[0]?.innerText || el.getAttribute?.('aria-label') || el.placeholder || el.name || el.id || el.tagName?.toLowerCase(), 40);
   const target = (event) => event.composedPath().find((n) => n instanceof Element) ?? event.target;
   const clickable = (el) => el.closest?.('a, button, input, select, textarea, label, summary, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [onclick]') ?? el;
@@ -87,11 +95,10 @@ export const inputTracker = (token: string): string => `(() => {
     send({ kind: 'key', text: keys.filter(Boolean).join('+') });
   }, true);
 
-  // Where the sensitive fields are on screen, so the video can blur them: secret-looking fields (as above), card
-  // fields, and anything the page marks with data-rasto-blur or class rasto-blur. Sent when it changes: on scroll and
-  // resize at once, else checked every 200 ms.
+  // Where the sensitive fields are on screen, so the video can blur them: secret-looking fields (as above) and anything the page marks with data-rasto-blur or class rasto-blur. Sent when it changes: on scroll and resize at
+  // once, else checked every 200 ms.
   const sensitive = (el) => el.matches('[data-rasto-blur], .rasto-blur')
-    || ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && (secret(el) || /^cc-/.test(el.autocomplete || '')));
+    || ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && secret(el));
   let lastRects = '';
   const reportRects = () => {
     const rects = [];
