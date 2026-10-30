@@ -240,12 +240,14 @@
       <div class="done-view">
         <div id="done-icon" class="done-icon">…</div>
         <div id="done-title" class="done-title">Saving…</div>
+        <div id="done-notice" class="notice" hidden></div>
         <progress id="progress" max="1" value="0"></progress>
         <code id="done-file" class="done-file"></code>
         <div id="done-meta" class="hint"></div>
         <ol id="done-cases" class="queue"></ol>
         <div id="done-testrail" class="done-testrail" hidden></div>
         <div class="done-actions">
+          <button id="retry-save" type="button" class="primary" hidden>Try again</button>
           <button id="show-folder" type="button">Show in folder</button>
           <button id="record-again" type="button">Record the same cases again</button>
           <button id="new-run" type="button" class="primary">New run</button>

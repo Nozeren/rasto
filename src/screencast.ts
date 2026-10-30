@@ -122,7 +122,8 @@ export type BlurRects = [number, number, number, number][];
 
 /**
  * Starts streaming the tab `tabId` of the browser on `port`; `onFrame` gets every frame, `onInput` the clicks and typing,
- * `onBlur` where the sensitive fields are whenever that changes.
+ * `onBlur` where the sensitive fields are whenever that changes, `onLost` if the tab goes away (closed, crashed, or the
+ * browser quit) while still streaming; stopScreencast doesn't count.
  */
 export async function startScreencast(
   port: number,
@@ -130,6 +131,7 @@ export async function startScreencast(
   onFrame: (frame: Frame) => void,
   onInput?: (event: InputEvent) => void,
   onBlur?: (rects: BlurRects) => void,
+  onLost?: () => void,
 ): Promise<void> {
   stopScreencast();
   const tab = (await listTabs(port)).find((t) => t.id === tabId);
@@ -137,7 +139,18 @@ export async function startScreencast(
 
   const devtools = await DevTools.connect(tab.webSocketDebuggerUrl);
   const token = randomBytes(8).toString('hex');
+  const lost = () => {
+    if (connection !== devtools) return;
+    connection = null;
+    devtools.close();
+    onLost?.();
+  };
+  devtools.onClose(lost);
   devtools.onEvent((method, params) => {
+    if (method === 'Inspector.targetCrashed' || method === 'Inspector.detached') {
+      lost();
+      return;
+    }
     if (method === 'Runtime.bindingCalled' && params.name === BINDING) {
       try {
         const { token: from, ...event } = JSON.parse(params.payload) as (InputEvent | { kind: 'blur'; rects: BlurRects }) & { token?: string };
@@ -156,6 +169,7 @@ export async function startScreencast(
     onFrame({ data: params.data, viewport: { width: params.metadata.deviceWidth, height: params.metadata.deviceHeight } });
   });
   connection = devtools;
+  await devtools.send('Inspector.enable');
   await devtools.send('Page.enable');
   if (onInput || onBlur) await trackInput(devtools, token);
   await devtools.send('Page.startScreencast', { format: 'jpeg', quality: 85, everyNthFrame: 1, ...MAX_SIZE });

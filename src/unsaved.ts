@@ -33,12 +33,22 @@ export function unsavedFolder(): string {
 const webmPath = (id: string) => path.join(unsavedFolder(), `${id}.webm`);
 const snapshotPath = (id: string) => path.join(unsavedFolder(), `${id}.json`);
 
-/** Starts a new capture file; `output` is where the video goes once saved (kept for a recovery). */
-export async function beginCapture(output: OutputSettings): Promise<string> {
+/** Whether a capture is being written right now. */
+export function isCapturing(): boolean {
+  return current !== null;
+}
+
+/**
+ * Starts a new capture file; `output` is where the video goes once saved (kept for a recovery). `onError` is told if
+ * the file can't be written, such as when the disk is full.
+ */
+export async function beginCapture(output: OutputSettings, onError: (error: Error) => void): Promise<string> {
   await endCapture();
   await fs.mkdir(unsavedFolder(), { recursive: true });
   const id = new Date().toISOString().replace(/[:.]/g, '-');
-  current = { id, stream: createWriteStream(webmPath(id)), writes: Promise.resolve(), output: { ...output } };
+  const stream = createWriteStream(webmPath(id));
+  stream.once('error', onError);
+  current = { id, stream, writes: Promise.resolve(), output: { ...output } };
   return id;
 }
 

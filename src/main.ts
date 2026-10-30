@@ -20,7 +20,7 @@ import { postRun, SavedRecording } from './report';
 import { startScreencast, stopScreencast, tabThumbnail } from './screencast';
 import { HotkeyAction, loadSettings, OutputSettings, Preferences, remember, saveSettings, Settings } from './settings';
 import { credentialSource, loadCase, loadRun, parseCaseId, parseRunId, setCredentials, testConnection } from './testrail';
-import { appendChunk, beginCapture, discardUnsaved, endCapture, listUnsaved, writeSnapshot } from './unsaved';
+import { appendChunk, beginCapture, discardUnsaved, endCapture, isCapturing, listUnsaved, writeSnapshot } from './unsaved';
 
 
 let mainWindow: BrowserWindow | null = null;
@@ -28,6 +28,50 @@ let hudWindow: BrowserWindow | null = null;
 let settings: Settings;
 /** `--hidden` (or RASTO_HIDDEN=1): never show the main window by itself, e.g. for an agent recording a headless browser. */
 const startHidden = process.argv.includes('--hidden') || process.env.RASTO_HIDDEN === '1';
+/** Nobody is there to answer a question: an agent's run, or the development snapshot below. */
+const unattended = startHidden || !!process.env.RASTO_SNAPSHOT;
+
+/** A recording is under way: the HUD is up (also during the countdown) or a capture is being written. */
+function recordingInProgress(): boolean {
+  return hudWindow !== null || isCapturing();
+}
+
+let askingToStop = false;
+
+/**
+ * Closing a window or quitting while recording: the main window owns the recorder, so ask first rather than end the
+ * capture and leave the HUD looking live. Stopping goes the usual way, so the video is saved.
+ */
+function guardRecording(event: Electron.Event): void {
+  if (unattended || !recordingInProgress()) return;
+  event.preventDefault();
+  if (askingToStop) return;
+  askingToStop = true;
+  void dialog.showMessageBox({
+    type: 'warning',
+    title: 'Rasto',
+    message: 'Stop and save this recording?',
+    detail: 'Rasto is still recording. Closing it would end the recording.',
+    buttons: ['Keep recording', 'Stop and save'],
+    defaultId: 0,
+    cancelId: 0,
+  }).then(({ response }) => {
+    askingToStop = false;
+    if (response === 1) mainWindow?.webContents.send('hotkey', 'stop');
+  });
+}
+
+/** The page that owns the recorder died: end the recording and reload, which offers what was captured on the Cases screen. */
+async function recorderCrashed(reason: string): Promise<void> {
+  console.error(`[renderer] gone during a recording: ${reason}`);
+  hudWindow?.destroy();
+  hudWindow = null;
+  stopScreencast();
+  await endCapture();
+  capturedRequests = await stopBrowserCapture().catch(() => null);
+  mainWindow?.webContents.reload();
+  if (!startHidden) mainWindow?.show();
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -45,6 +89,10 @@ function createWindow(): void {
     },
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'static', 'index.html'));
+  mainWindow.on('close', guardRecording);
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (recordingInProgress()) void recorderCrashed(details.reason);
+  });
 
   // Surface renderer and preload errors in the terminal that ran `npm start`.
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
@@ -112,6 +160,8 @@ function openHud(): void {
   hudWindow.loadFile(path.join(__dirname, '..', 'static', 'hud.html'));
   // showInactive: appear without taking focus away from the browser being tested.
   hudWindow.once('ready-to-show', () => hudWindow?.showInactive());
+  // closeHud destroys it, which skips this: only a user's close (Alt+F4) or quitting ends up here.
+  hudWindow.on('close', guardRecording);
   hudWindow.on('closed', () => {
     hudWindow = null;
   });
@@ -197,6 +247,7 @@ ipcMain.handle('screencast-start', async (_event, tabId: string) => {
       (frame) => mainWindow?.webContents.send('browser-frame', frame),
       settings.preferences.showInput ? (event) => mainWindow?.webContents.send('browser-input', event) : undefined,
       settings.preferences.blurSensitive ? (rects) => mainWindow?.webContents.send('browser-blur', rects) : undefined,
+      () => mainWindow?.webContents.send('recording-lost', 'The browser tab was closed, crashed, or its browser quit.'),
     );
     return { ok: true };
   } catch (error) {
@@ -218,12 +269,11 @@ function progress(fraction: number, stage: string): void {
  * .har, the step log, the clips and (for a guide) the chapters .md. On failure the capture is kept for a later try.
  */
 async function saveRecording(webm: string, meta: RecordingMeta, output: OutputSettings, requests: RawRequest[] | null): Promise<unknown> {
-  const folder = outputFolder(output);
-  await fs.mkdir(folder, { recursive: true });
-  const base = baseName(await nextSeq(folder), meta.cases);
-  const video = path.join(folder, `${base}.mp4`);
-
   try {
+    const folder = outputFolder(output);
+    await fs.mkdir(folder, { recursive: true });
+    const base = baseName(await nextSeq(folder), meta.cases);
+    const video = path.join(folder, `${base}.mp4`);
     const maxBytes = settings.preferences.maxMb * 1024 * 1024;
     const result = await compress(webm, video, meta.durationMs / 1000, maxBytes, progress);
 
@@ -271,7 +321,9 @@ async function saveRecording(webm: string, meta: RecordingMeta, output: OutputSe
 }
 
 // Recording in progress: the capture goes to disk as it comes (unsaved.ts).
-ipcMain.handle('capture-begin', async () => beginCapture(settings.output));
+ipcMain.handle('capture-begin', async () => beginCapture(settings.output, (error) => {
+  mainWindow?.webContents.send('recording-lost', `The recording could not be written to disk: ${error.message}.`);
+}));
 ipcMain.on('capture-chunk', (_event, data: ArrayBuffer) => appendChunk(data));
 ipcMain.handle('capture-abort', async () => {
   const capture = await endCapture();
@@ -281,15 +333,24 @@ ipcMain.on('capture-snapshot', (_event, meta: RecordingMeta) => {
   writeSnapshot(meta).catch((error: Error) => console.error(`[unsaved] snapshot: ${error.message}`));
 });
 
+/** The network log of a capture that couldn't be saved, so that trying again still writes its .har. */
+let unsavedRequests: { id: string; requests: RawRequest[] | null } | null = null;
+
 ipcMain.handle('save-recording', async (_event, meta: RecordingMeta) => {
+  // The final step log, in case this save fails and is tried again.
+  await writeSnapshot(meta).catch((error: Error) => console.error(`[unsaved] snapshot: ${error.message}`));
   const capture = await endCapture();
   if (!capture) return { ok: false, error: 'Nothing was recorded', raw: '' };
   const requests = capturedRequests;
   capturedRequests = null;
   const result = await saveRecording(capture.webm, meta, settings.output, requests);
   // Saved: the capture and its crash copy of the step log go. Not saved: both stay, offered again on the next start.
-  if ((result as { ok: boolean }).ok) await discardUnsaved(capture.id);
-  return result;
+  if ((result as { ok: boolean }).ok) {
+    await discardUnsaved(capture.id);
+    return result;
+  }
+  unsavedRequests = { id: capture.id, requests };
+  return { ...(result as object), id: capture.id };
 });
 
 ipcMain.handle('unsaved-list', async () => (await listUnsaved()).map((u) => ({
@@ -305,9 +366,13 @@ ipcMain.handle('unsaved-list', async () => (await listUnsaved()).map((u) => ({
 ipcMain.handle('unsaved-save', async (_event, id: string) => {
   const found = (await listUnsaved()).find((u) => u.id === id);
   if (!found) return { ok: false, error: 'That recording is gone', raw: '' };
-  const result = await saveRecording(found.webm, found.meta, found.output, null);
-  if ((result as { ok: boolean }).ok) await discardUnsaved(id);
-  return result;
+  const requests = unsavedRequests?.id === id ? unsavedRequests.requests : null;
+  const result = await saveRecording(found.webm, found.meta, found.output, requests);
+  if ((result as { ok: boolean }).ok) {
+    await discardUnsaved(id);
+    return result;
+  }
+  return { ...(result as object), id };
 });
 
 ipcMain.handle('unsaved-discard', async (_event, id: string) => discardUnsaved(id));
