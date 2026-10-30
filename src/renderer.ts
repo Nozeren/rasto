@@ -813,6 +813,14 @@ async function startPreview(): Promise<void> {
 // ---------------------------------------------------------------------------------------------------------------------
 // ③ Save to
 
+/** What the video will hide, said where the choice is made: blurring has limits a tester should know before recording. */
+function blurSummary(): string {
+  if (!selectedSource) return '';
+  if (selectedSource.kind !== 'tab') return 'Sensitive fields are not blurred in window and screen recordings. Use test data, or record a browser tab.';
+  if (!settings?.preferences.blurSensitive) return 'Blurring sensitive fields is off (⚙ Settings).';
+  return 'Blurs the sensitive fields Rasto recognises on this page, not inside embedded frames. Check the video before sharing it.';
+}
+
 async function enterSave(): Promise<void> {
   applyOutputPreview(await window.recorder.previewOutput());
   fillDatalist('recent-subjects', settings?.recent.subjects ?? []);
@@ -822,6 +830,7 @@ async function enterSave(): Promise<void> {
   cases.innerHTML = '';
   queue.forEach((c) => cases.appendChild(el('li', '', `${c.label}: ${c.title}`)));
   $<HTMLDivElement>('summary-source').textContent = selectedSource ? `${selectedSource.kind}: ${selectedSource.name}` : '—';
+  $<HTMLDivElement>('summary-blur').textContent = blurSummary();
 
   const keys = $<HTMLTableElement>('summary-keys');
   keys.innerHTML = '';
